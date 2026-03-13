@@ -1,0 +1,100 @@
+# Cursor Rules for IQ LDS Project
+
+## Documentation
+
+All documentation is located in the `documentation/` folder. Refer to documentation files for detailed guides on:
+- Component usage
+- Navigation patterns
+- Design system
+- Page creation
+- And more
+
+## Design System
+
+### Design Tokens
+- Use CSS variables for theming (defined in `src/index.css`)
+- Follow the spacing scale: multiples of 4px
+- Use semantic color names: `primary`, `secondary`, `muted`, `destructive`
+- Maintain consistent border radius: `rounded-md` (6px)
+
+### Typography & Spacing
+- Font sizes: Use Tailwind scale (text-xs through text-4xl)
+- Font weights: `font-normal`, `font-medium`, `font-semibold`, `font-bold`
+- Page padding: `py-8` or `py-12`
+- Section spacing: `space-y-6` or `space-y-8`
+
+## Component Usage
+
+### Component Library
+- Use shadcn/ui components from `@/components/ui`
+- Style: `radix-nova`
+- Icon library: `hugeicons`
+- Prefer composition over configuration
+- Maintain accessibility (ARIA labels, semantic HTML)
+
+## Navigation Patterns
+
+### Back Button
+- Use `BackButton` component or `PageHeaderWithBack` pattern
+- Specify custom destination with `href` prop
+- See `documentation/navigation.md` for details
+
+### Breadcrumbs
+- Automatically generated from route in `GlobalHeader`
+- Provide custom breadcrumbs via `breadcrumbs` prop
+- Hide on mobile
+
+### Page Tabs
+- Use `PageHeaderWithTabs` for tabbed navigation
+- Sync with URL search params for shareable links
+- Limit to 2 levels of nesting
+
+## Code Style
+
+### TypeScript & React
+- Use TypeScript for all components
+- Functional components with hooks
+- Prefer named exports
+- Use `cn()` utility for className merging
+- Handle loading and error states
+
+### File Naming
+- Components: `kebab-case.tsx`
+- Pages: `PascalCase.tsx`
+- Utilities: `kebab-case.ts`
+
+### Import Organization
+```tsx
+// 1. React, 2. Third-party, 3. UI components, 4. Utilities, 5. Types
+import * as React from "react"
+import { Component } from "library"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import type { ComponentProps } from "@/types"
+```
+
+## Path Aliases
+- `@/components` - Components directory
+- `@/lib` - Utility functions
+- `@/hooks` - Custom React hooks
+
+## Accessibility
+- Keyboard accessible interactive elements
+- Semantic HTML
+- ARIA labels where needed
+- WCAG AA color contrast
+- Test with screen readers
+
+## Performance
+- Lazy load heavy components
+- Optimize images
+- Minimize bundle size
+- Use React.memo for expensive components
+
+## Project Configuration
+- Style: `radix-nova` (shadcn/ui)
+- Icon Library: `hugeicons`
+- Base Color: `neutral`
+- CSS Variables: Enabled
+- TypeScript: Enabled
+- RSC: Disabled
