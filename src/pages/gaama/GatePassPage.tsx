@@ -2,156 +2,269 @@ import * as React from "react"
 import { PageShell } from "@/components/layouts/page-shell"
 import { PageHeader } from "@/components/blocks/page-header"
 import { Button } from "@/components/ui/button"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { FormSection } from "@/components/patterns/form-section"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Empty,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+  EmptyDescription,
+} from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { GatePass } from "@/lib/gaama-types"
-import { Plus, Truck } from "lucide-react"
+import { Truck, Search, Printer, Eye, FileOutput } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
 
-type ModalMode = "create" | "view" | null
+type ModalMode = "view" | "generate" | null
 
 export function GatePassPage() {
   const data = useData()
   const [mode, setMode] = React.useState<ModalMode>(null)
-  const [form, setForm] = React.useState({
-    challan_id: "",
-    vehicle_number: "",
-    security_approval: false,
-  })
+  const [viewId, setViewId] = React.useState<string | null>(null)
+  const [generateId, setGenerateId] = React.useState<string | null>(null)
+  const [generateNumber, setGenerateNumber] = React.useState("")
+  const [generateDate, setGenerateDate] = React.useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
+
+  const [searchTerm, setSearchTerm] = React.useState("")
+  const [filterCustomer, setFilterCustomer] = React.useState("all")
+  const [filterCategory, setFilterCategory] = React.useState("all")
+  const [filterStatus, setFilterStatus] = React.useState("all")
 
   const allowed = canAccess(data.currentRole, "gate-pass")
   const gatePasses = data.gatePasses
 
-  const openCreate = () => {
-    setForm({
-      challan_id: data.challans[0]?.challan_id ?? "",
-      vehicle_number: "",
-      security_approval: false,
+  const filtered = React.useMemo(() => {
+    return gatePasses.filter((g) => {
+      const matchSearch =
+        !searchTerm ||
+        (g.challan_number ?? g.challan_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (g.customer_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (g.gate_pass_number ?? "").toLowerCase().includes(searchTerm.toLowerCase())
+      const matchCustomer = filterCustomer === "all" || g.customer_id === filterCustomer
+      const matchCategory =
+        filterCategory === "all" ||
+        (g.product_category ?? "").toLowerCase().includes(filterCategory.toLowerCase())
+      const matchStatus = filterStatus === "all" || g.gate_pass_status === filterStatus || g.process_status === filterStatus
+      return matchSearch && matchCustomer && matchCategory && matchStatus
     })
-    setMode("create")
-  }
+  }, [gatePasses, searchTerm, filterCustomer, filterCategory, filterStatus])
+
+  const uniqueCustomers = React.useMemo(() => {
+    const ids = new Set(gatePasses.map((g) => g.customer_id).filter(Boolean))
+    return Array.from(ids).map((id) => ({
+      id: id!,
+      name: data.getCustomer(id!)?.customer_name ?? id,
+    }))
+  }, [gatePasses, data])
+
+  const uniqueCategories = React.useMemo(() => {
+    const cats = new Set(gatePasses.map((g) => g.product_category).filter(Boolean))
+    return Array.from(cats) as string[]
+  }, [gatePasses])
 
   const openView = (g: GatePass) => {
-    setForm({
-      challan_id: g.challan_id,
-      vehicle_number: g.vehicle_number,
-      security_approval: g.security_approval,
-    })
+    setViewId(g.gatepass_id)
     setMode("view")
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    data.addGatePass({
-      ...form,
-      timestamp: new Date().toISOString(),
-    })
-    setMode(null)
+  const openGenerate = (g: GatePass) => {
+    setGenerateId(g.gatepass_id)
+    setGenerateNumber(g.gate_pass_number ?? "")
+    setGenerateDate(g.gate_pass_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10))
+    setMode("generate")
   }
+
+  const handleGenerateSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!generateId) return
+    data.updateGatePass(generateId, {
+      gate_pass_number: generateNumber,
+      gate_pass_date: new Date(generateDate).toISOString().slice(0, 10),
+      gate_pass_status: "Generated",
+    })
+    toast.success("Gate pass generated.")
+    setMode(null)
+    setGenerateId(null)
+  }
+
+  const viewGatePass = viewId ? data.getGatePass(viewId) : null
 
   return (
     <PageShell>
-      <PageHeader
-        title="Gate Pass"
-        actions={allowed ? <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" />Create Gate Pass</Button> : null}
-      />
-      <div className="flex-1 overflow-auto px-6 py-4">
+      <PageHeader title="Gate Pass" />
+      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
         {!allowed ? (
           <p className="text-muted-foreground">You do not have permission to view this module.</p>
         ) : gatePasses.length === 0 ? (
           <Empty>
             <EmptyHeader>
-              <EmptyMedia variant="icon"><Truck className="size-4" /></EmptyMedia>
+              <EmptyMedia variant="icon">
+                <Truck className="size-4" />
+              </EmptyMedia>
               <EmptyTitle>No gate passes</EmptyTitle>
-              <EmptyDescription>Create gate pass for challan dispatch.</EmptyDescription>
+              <EmptyDescription>Gate passes are created from challans or when a GRN is rejected (Defect).</EmptyDescription>
             </EmptyHeader>
-            <Button onClick={openCreate}>Create Gate Pass</Button>
           </Empty>
         ) : (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Gate Pass ID</TableHead>
-                  <TableHead>Challan</TableHead>
-                  <TableHead>Vehicle</TableHead>
-                  <TableHead>Security Approval</TableHead>
-                  <TableHead>Timestamp</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {gatePasses.map((g) => (
-                  <TableRow key={g.gatepass_id}>
-                    <TableCell className="font-medium">{g.gatepass_id}</TableCell>
-                    <TableCell>{g.challan_id}</TableCell>
-                    <TableCell>{g.vehicle_number}</TableCell>
-                    <TableCell><Badge variant={g.security_approval ? "default" : "secondary"}>{g.security_approval ? "Yes" : "No"}</Badge></TableCell>
-                    <TableCell>{new Date(g.timestamp).toLocaleString()}</TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="sm" onClick={() => openView(g)}>View</Button>
-                    </TableCell>
+          <>
+            <div className="flex flex-col sm:flex-row gap-4 flex-wrap">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              <Select value={filterCustomer} onValueChange={setFilterCustomer}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Customer" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Customers</SelectItem>
+                  {uniqueCustomers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterCategory} onValueChange={setFilterCategory}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {uniqueCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterStatus} onValueChange={setFilterStatus}>
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Gate Pass Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="Pending">Pending</SelectItem>
+                  <SelectItem value="Generated">Generated</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Challan No.</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Product Category</TableHead>
+                    <TableHead>Product Name</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Challan Date & Time</TableHead>
+                    <TableHead>Process Status</TableHead>
+                    <TableHead>Gate Pass Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((g) => (
+                    <TableRow key={g.gatepass_id}>
+                      <TableCell className="font-medium">{g.challan_number ?? g.challan_id}</TableCell>
+                      <TableCell>{g.customer_name ?? "—"}</TableCell>
+                      <TableCell>{g.product_category ?? "—"}</TableCell>
+                      <TableCell>{g.product_name ?? "—"}</TableCell>
+                      <TableCell>{g.quantity ?? "—"} {g.units ?? ""}</TableCell>
+                      <TableCell>{g.challan_date_time ?? g.timestamp?.slice(0, 19).replace("T", " ") ?? "—"}</TableCell>
+                      <TableCell><Badge variant="secondary">{g.process_status ?? "—"}</Badge></TableCell>
+                      <TableCell><Badge variant={g.gate_pass_status === "Generated" ? "default" : "secondary"}>{g.gate_pass_status ?? "Pending"}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" title="View" onClick={() => openView(g)}><Eye className="h-4 w-4" /></Button>
+                        {g.gate_pass_status !== "Generated" && (
+                          <Button variant="ghost" size="sm" title="Generate" onClick={() => openGenerate(g)}><FileOutput className="h-4 w-4" /></Button>
+                        )}
+                        <Button variant="ghost" size="sm" title="Print" onClick={() => { setViewId(g.gatepass_id); setMode("view"); setTimeout(() => window.print(), 300); }}><Printer className="h-4 w-4" /></Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </>
         )}
       </div>
 
-      <Dialog open={mode !== null} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-md">
+      <Dialog open={mode === "view" && viewId !== null} onOpenChange={(open) => !open && (setMode(null), setViewId(null))}>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Create Gate Pass" : "Gate Pass Details"}</DialogTitle>
+            <DialogTitle>Gate Pass Details</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <FormSection title="Details" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Challan</Label>
-                  <Select value={form.challan_id} onValueChange={(v) => setForm((f) => ({ ...f, challan_id: v }))} disabled={mode === "view"}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {data.challans.map((c) => (
-                        <SelectItem key={c.challan_id} value={c.challan_id}>{c.challan_id}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Vehicle Number</Label>
-                  <Input value={form.vehicle_number} onChange={(e) => setForm((f) => ({ ...f, vehicle_number: e.target.value }))} readOnly={mode === "view"} />
-                </div>
-                {mode === "view" ? (
-                  <div className="space-y-2">
-                    <Label>Security Approval</Label>
-                    <Badge variant={form.security_approval ? "default" : "secondary"}>{form.security_approval ? "Yes" : "No"}</Badge>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="security"
-                      checked={form.security_approval}
-                      onChange={(e) => setForm((f) => ({ ...f, security_approval: e.target.checked }))}
-                    />
-                    <Label htmlFor="security">Security Approval</Label>
-                  </div>
-                )}
+          {viewGatePass && (
+            <div className="space-y-4 py-4">
+              <p><strong>Challan No.:</strong> {viewGatePass.challan_number ?? viewGatePass.challan_id}</p>
+              <p><strong>Customer:</strong> {viewGatePass.customer_name ?? "—"}</p>
+              <p><strong>Product Category:</strong> {viewGatePass.product_category ?? "—"}</p>
+              <p><strong>Product Name:</strong> {viewGatePass.product_name ?? "—"}</p>
+              <p><strong>Quantity:</strong> {viewGatePass.quantity ?? "—"} {viewGatePass.units ?? ""}</p>
+              <p><strong>Gate Pass Number:</strong> {viewGatePass.gate_pass_number ?? "—"}</p>
+              <p><strong>Gate Pass Date:</strong> {viewGatePass.gate_pass_date?.slice(0, 10) ?? "—"}</p>
+              <p><strong>Process Status:</strong> <Badge variant="secondary">{viewGatePass.process_status ?? "—"}</Badge></p>
+              <p><strong>Gate Pass Status:</strong> <Badge variant="secondary">{viewGatePass.gate_pass_status ?? "—"}</Badge></p>
+              <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mode === "generate" && generateId !== null} onOpenChange={(open) => !open && (setMode(null), setGenerateId(null))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Gate Pass</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleGenerateSubmit}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Gate Pass Number</Label>
+                <Input value={generateNumber} onChange={(e) => setGenerateNumber(e.target.value)} placeholder="e.g. GP-2025-001" />
               </div>
-            </FormSection>
-            {mode === "create" && (
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-                <Button type="submit">Create Gate Pass</Button>
-              </DialogFooter>
-            )}
+              <div className="space-y-2">
+                <Label>Gate Pass Date</Label>
+                <Input type="date" value={generateDate} onChange={(e) => setGenerateDate(e.target.value)} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
+              <Button type="submit">Generate</Button>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
