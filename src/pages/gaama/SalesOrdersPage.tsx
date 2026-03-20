@@ -451,7 +451,8 @@ export function SalesOrdersPage() {
   const orderStatusOptions = React.useMemo(() => {
     const s = new Set<string>()
     for (const o of orders) {
-      if (o.order_status != null && o.order_status !== "") s.add(String(o.order_status))
+      const raw = String(o.order_status ?? "").trim()
+      if (raw) s.add(raw)
     }
     return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
   }, [orders])
@@ -974,7 +975,7 @@ export function SalesOrdersPage() {
                   <Badge
                     className={cn(
                       "shrink-0 border px-3 py-1.5 text-sm font-medium",
-                      viewOrder.order_status === "Approved" || viewOrder.order_status === "approved"
+                      String(viewOrder.order_status).toLowerCase() === "approved"
                         ? "border-emerald-200 bg-emerald-100/90 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
                         : "border-slate-200 bg-slate-100/90 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200",
                     )}
