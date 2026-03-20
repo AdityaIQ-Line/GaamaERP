@@ -27,9 +27,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Separator } from "@/components/ui/separator"
+import { Switch } from "@/components/ui/switch"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
 import {
   Select,
@@ -42,6 +44,7 @@ import { useData, canAccess } from "@/context/DataContext"
 import type { Rate, PricingType } from "@/lib/gaama-types"
 import { Plus, IndianRupee, Search, Eye, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 
 const PRICING_TYPES: PricingType[] = ["By Carton", "By Weight", "By Vehicle"]
 const STATUS_OPTIONS = ["Active", "Inactive"]
@@ -194,6 +197,184 @@ export function RatesPage() {
     )
   })
 
+  const renderRateForm = (footer: React.ReactNode) => (
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+        <div className="space-y-2">
+          <Label>
+            Category <span className="text-destructive">*</span>
+          </Label>
+          <Select
+            value={formCategoryId}
+            onValueChange={(v) => setFormCategoryId(v)}
+            disabled={isView}
+          >
+            <SelectTrigger className="h-9 bg-muted/60 border-border">
+              <SelectValue placeholder="Select category" />
+            </SelectTrigger>
+            <SelectContent>
+              {categories.map((c) => (
+                <SelectItem key={c.category_id} value={c.category_id}>
+                  {c.category_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Pricing Type <span className="text-destructive">*</span>
+          </Label>
+          <Select
+            value={formPricingType}
+            onValueChange={(v) => setFormPricingType(v as PricingType)}
+            disabled={isView}
+          >
+            <SelectTrigger className="h-9 bg-muted/60 border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRICING_TYPES.map((t) => (
+                <SelectItem key={t} value={t}>
+                  {t}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Status <span className="text-destructive">*</span>
+          </Label>
+          <Select value={formStatus} onValueChange={setFormStatus} disabled={isView}>
+            <SelectTrigger className="h-9 bg-muted/60 border-border">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((s) => (
+                <SelectItem key={s} value={s}>
+                  {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>
+            Rate Per Unit (₹) <span className="text-destructive">*</span>
+          </Label>
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            placeholder="Enter rate"
+            value={formRateValue}
+            onChange={(e) => setFormRateValue(e.target.value)}
+            readOnly={isView}
+            className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+          />
+        </div>
+      </div>
+
+      <Separator />
+
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <Switch
+            id="customer-specific-rate"
+            checked={customerSpecific}
+            onCheckedChange={(v) => setCustomerSpecific(!!v)}
+            disabled={isView}
+          />
+          <Label htmlFor="customer-specific-rate" className="text-base font-medium cursor-pointer">
+            Customer Specific Rate
+          </Label>
+        </div>
+      </div>
+      {customerSpecific && (
+        <div className="space-y-2 pl-0 sm:pl-11">
+          <Label>Customer</Label>
+          <Select value={formCustomerId} onValueChange={setFormCustomerId} disabled={isView}>
+            <SelectTrigger className="h-9 bg-muted/60 border-border">
+              <SelectValue placeholder="Select customer" />
+            </SelectTrigger>
+            <SelectContent>
+              {customers.map((c) => (
+                <SelectItem key={c.customer_id} value={c.customer_id}>
+                  {c.customer_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      <div className="space-y-4 border-t border-border pt-6">
+        <h3 className="text-base font-semibold">Validity Period</h3>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label>Effective Date</Label>
+            <Input
+              type="date"
+              value={formEffectiveFrom}
+              onChange={(e) => setFormEffectiveFrom(e.target.value)}
+              readOnly={isView}
+              className="h-9 bg-muted/60 border-border"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Expiry Date</Label>
+            <Input
+              type="date"
+              value={formEffectiveTo}
+              onChange={(e) => setFormEffectiveTo(e.target.value)}
+              readOnly={isView}
+              className="h-9 bg-muted/60 border-border"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2 border-t border-border pt-6">
+        <Label>Description</Label>
+        <Textarea
+          placeholder="Write here..."
+          value={formDescription}
+          onChange={(e) => setFormDescription(e.target.value)}
+          readOnly={isView}
+          rows={5}
+          className="min-h-[120px] resize-y bg-background border-border"
+        />
+      </div>
+
+      {footer}
+    </form>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Add Rate" noBorder backButton={{ onClick: () => setMode(null) }} />
+            <div className="space-y-4 px-6 py-4 h-full">
+            <div className="rounded-lg border border-border bg-card p-6">
+              {renderRateForm(
+                <div className="flex justify-end gap-3 border-t border-border pt-6">
+                  <Button type="button" variant="outline" onClick={() => setMode(null)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">Save</Button>
+                </div>
+              )}
+            </div>
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -227,14 +408,16 @@ export function RatesPage() {
           </Empty>
         ) : (
           <>
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by category, customer, or rate"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative max-w-xs flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by category, customer, or rate"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
 
             <div className="rounded-md border">
@@ -296,182 +479,29 @@ export function RatesPage() {
         )}
       </div>
 
-      <Dialog open={mode !== null} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create"
-                ? "Add Rate"
-                : mode === "edit"
-                  ? "Edit Rate"
-                  : "Rate Details"}
+      <Dialog open={mode === "edit" || mode === "view"} onOpenChange={(open) => !open && setMode(null)}>
+        <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] max-h-[90vh] overflow-y-auto gap-0 border-border p-6 sm:p-6">
+          <DialogHeader className="space-y-0 pb-6 text-left">
+            <DialogTitle className="text-lg font-semibold">
+              {mode === "edit" ? "Edit Rate" : "Rate Details"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <FormSection title="Details" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Category *</Label>
-                  <Select
-                    value={formCategoryId}
-                    onValueChange={(v) => setFormCategoryId(v)}
-                    disabled={isView}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((c) => (
-                        <SelectItem key={c.category_id} value={c.category_id}>
-                          {c.category_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Category Unit</Label>
-                  <Input
-                    value={categoryUnit}
-                    readOnly
-                    className="bg-muted"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Pricing Type *</Label>
-                  <Select
-                    value={formPricingType}
-                    onValueChange={(v) =>
-                      setFormPricingType(v as PricingType)
-                    }
-                    disabled={isView}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRICING_TYPES.map((t) => (
-                        <SelectItem key={t} value={t}>
-                          {t}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Rate Per Unit *</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={formRateValue}
-                    onChange={(e) => setFormRateValue(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={formStatus}
-                    onValueChange={setFormStatus}
-                    disabled={isView}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STATUS_OPTIONS.map((s) => (
-                        <SelectItem key={s} value={s}>
-                          {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <Input
-                    value={formDescription}
-                    onChange={(e) => setFormDescription(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="customer-specific"
-                    checked={customerSpecific}
-                    onChange={(e) => setCustomerSpecific(e.target.checked)}
-                    disabled={isView}
-                    className="rounded border-input"
-                  />
-                  <Label htmlFor="customer-specific">
-                    Customer-specific rate
-                  </Label>
-                </div>
-                {customerSpecific && (
-                  <div className="space-y-2">
-                    <Label>Customer</Label>
-                    <Select
-                      value={formCustomerId}
-                      onValueChange={setFormCustomerId}
-                      disabled={isView}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((c) => (
-                          <SelectItem
-                            key={c.customer_id}
-                            value={c.customer_id}
-                          >
-                            {c.customer_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Effective Date</Label>
-                    <Input
-                      type="date"
-                      value={formEffectiveFrom}
-                      onChange={(e) => setFormEffectiveFrom(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Expiry Date</Label>
-                    <Input
-                      type="date"
-                      value={formEffectiveTo}
-                      onChange={(e) => setFormEffectiveTo(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                </div>
-              </div>
-            </FormSection>
-            {!isView && (
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setMode(null)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {mode === "create" ? "Create" : "Save"}
+          {renderRateForm(
+            isView ? (
+              <DialogFooter className="border-t border-border pt-6 sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setMode(null)}>
+                  Close
                 </Button>
               </DialogFooter>
-            )}
-          </form>
+            ) : (
+              <DialogFooter className="gap-3 border-t border-border pt-6 sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setMode(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit">Save</Button>
+              </DialogFooter>
+            ),
+          )}
         </DialogContent>
       </Dialog>
 

@@ -39,6 +39,8 @@ import type { Invoice, Challan } from "@/lib/gaama-types"
 import { Receipt, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
 
 type Tab = "pending" | "invoices"
 type ModalMode = "create" | "edit" | "view" | null
@@ -198,23 +200,97 @@ export function InvoicesPage() {
     )
   })
 
+  const invoiceCreateForm = (
+    <div className="rounded-lg border border-border bg-card p-6">
+      <form onSubmit={handleCreateSubmit}>
+        <FormSection title="Details" noSeparator>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Sales Order</Label>
+              <Input value={form.sales_order_id} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Invoice Date</Label>
+              <Input type="date" value={form.invoice_date} onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))} />
+            </div>
+            <div className="space-y-2">
+              <Label>Base Amount</Label>
+              <Input type="number" value={createAmount} onChange={(e) => setCreateAmount(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>GST %</Label>
+              <Input type="number" value={createGstPct} onChange={(e) => setCreateGstPct(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Tax</Label>
+              <Input value={((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100} readOnly className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Grand Total</Label>
+              <Input
+                value={(parseFloat(createAmount) || 0) + ((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100}
+                readOnly
+                className="bg-muted"
+              />
+            </div>
+          </div>
+        </FormSection>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" onClick={() => {
+            if (!window.confirm("Discard changes?")) return
+            setMode(null)
+          }}>
+            Cancel
+          </Button>
+          <Button type="submit">Create Invoice</Button>
+        </div>
+      </form>
+    </div>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title="Create Invoice"
+              noBorder
+              backButton={{
+                onClick: () => {
+                  if (!window.confirm("Discard changes?")) return
+                  setMode(null)
+                },
+              }}
+            />
+            <div className="space-y-4 px-6 py-4 h-full">{invoiceCreateForm}</div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
-      <PageHeader title="Invoice Management" />
-      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
-        {!allowed ? (
-          <p className="text-muted-foreground">You do not have permission to view this module.</p>
-        ) : (
-          <>
-            <div className="flex gap-2 border-b">
-              <Button variant={tab === "pending" ? "default" : "ghost"} size="sm" onClick={() => setTab("pending")}>
-                Pending Generation ({pendingChallans.length})
-              </Button>
-              <Button variant={tab === "invoices" ? "default" : "ghost"} size="sm" onClick={() => setTab("invoices")}>
-                Invoices ({invoices.length})
-              </Button>
-            </div>
-
+      {!allowed ? (
+        <>
+          <PageHeader title="Invoice Management" />
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <p className="text-muted-foreground">You do not have permission to view this module.</p>
+          </div>
+        </>
+      ) : (
+        <>
+          <PageHeaderWithTabs
+            title="Invoice Management"
+            tabs={[
+              { value: "pending", label: "Pending Generation", badge: pendingChallans.length },
+              { value: "invoices", label: "Invoices", badge: invoices.length },
+            ]}
+            value={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+          />
+          <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
             {tab === "pending" && (
               <>
                 {pendingChallans.length === 0 ? (
@@ -276,135 +352,109 @@ export function InvoicesPage() {
 
             {tab === "invoices" && (
               <>
-                <div className="flex gap-4">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search invoices"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      exportInvoicesToCsv(
-                        filteredInvoices.map((i) => ({
-                          "Invoice No": i.invoice_number ?? i.invoice_id,
-                          "Sales Order": i.sales_order_number ?? i.sales_order_id,
-                          Category: i.category_name ?? "",
-                          Customer: i.customer_name ?? "",
-                          Quantity: i.quantity ?? "",
-                          Unit: i.unit ?? "",
-                          "Created At": (i.created_at ?? i.invoice_date ?? "").toString().slice(0, 10),
-                          "Total Amount": i.grand_total ?? i.total_amount ?? "",
-                        })),
-                        `invoices-${new Date().toISOString().slice(0, 10)}.csv`
-                      )
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
-                {filteredInvoices.length === 0 ? (
+                {invoices.length === 0 ? (
                   <Empty>
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <Receipt className="size-4" />
                       </EmptyMedia>
                       <EmptyTitle>No invoices</EmptyTitle>
-                      <EmptyDescription>Create invoices from the Pending tab.</EmptyDescription>
+                      <EmptyDescription>Create invoices from the Pending Generation tab.</EmptyDescription>
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Invoice Number</TableHead>
-                          <TableHead>Sales Order No.</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Unit</TableHead>
-                          <TableHead>Created At</TableHead>
-                          <TableHead>Total Amount</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredInvoices.map((i) => (
-                          <TableRow key={i.invoice_id}>
-                            <TableCell className="font-medium">{i.invoice_number ?? i.invoice_id}</TableCell>
-                            <TableCell>{i.sales_order_number ?? i.sales_order_id}</TableCell>
-                            <TableCell>{i.category_name ?? "—"}</TableCell>
-                            <TableCell>{i.customer_name ?? "—"}</TableCell>
-                            <TableCell>{i.quantity ?? "—"}</TableCell>
-                            <TableCell>{i.unit ?? "—"}</TableCell>
-                            <TableCell>{(i.created_at ?? i.invoice_date ?? "").toString().slice(0, 10)}</TableCell>
-                            <TableCell>₹{(i.grand_total ?? Number(i.total_amount) ?? 0).toLocaleString()}</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" title="View" onClick={() => openView(i)}><Eye className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Print" onClick={() => { openView(i); setTimeout(() => window.print(), 300); }}><Printer className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Export" onClick={() => { openView(i); toast.info("Use Print in the dialog to save as PDF."); }}><Download className="h-4 w-4" /></Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search invoices"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                      {filteredInvoices.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            exportInvoicesToCsv(
+                              filteredInvoices.map((i) => ({
+                                "Invoice No": i.invoice_number ?? i.invoice_id,
+                                "Sales Order": i.sales_order_number ?? i.sales_order_id,
+                                Category: i.category_name ?? "",
+                                Customer: i.customer_name ?? "",
+                                Quantity: i.quantity ?? "",
+                                Unit: i.unit ?? "",
+                                "Created At": (i.created_at ?? i.invoice_date ?? "").toString().slice(0, 10),
+                                "Total Amount": i.grand_total ?? i.total_amount ?? "",
+                              })),
+                              `invoices-${new Date().toISOString().slice(0, 10)}.csv`
+                            )
+                          }
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </Button>
+                      )}
+                    </div>
+                    {filteredInvoices.length === 0 ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <Receipt className="size-4" />
+                          </EmptyMedia>
+                          <EmptyTitle>No matching invoices</EmptyTitle>
+                          <EmptyDescription>Try a different search term.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Invoice Number</TableHead>
+                              <TableHead>Sales Order No.</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead>Customer</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Unit</TableHead>
+                              <TableHead>Created At</TableHead>
+                              <TableHead>Total Amount</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredInvoices.map((i) => (
+                              <TableRow key={i.invoice_id}>
+                                <TableCell className="font-medium">{i.invoice_number ?? i.invoice_id}</TableCell>
+                                <TableCell>{i.sales_order_number ?? i.sales_order_id}</TableCell>
+                                <TableCell>{i.category_name ?? "—"}</TableCell>
+                                <TableCell>{i.customer_name ?? "—"}</TableCell>
+                                <TableCell>{i.quantity ?? "—"}</TableCell>
+                                <TableCell>{i.unit ?? "—"}</TableCell>
+                                <TableCell>{(i.created_at ?? i.invoice_date ?? "").toString().slice(0, 10)}</TableCell>
+                                <TableCell>₹{(i.grand_total ?? Number(i.total_amount) ?? 0).toLocaleString()}</TableCell>
+                                <TableCell className="text-right">
+                                  <Button variant="ghost" size="sm" title="View" onClick={() => openView(i)}><Eye className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => { openView(i); setTimeout(() => window.print(), 300); }}><Printer className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Export" onClick={() => { openView(i); toast.info("Use Print in the dialog to save as PDF."); }}><Download className="h-4 w-4" /></Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
-      </div>
-
-      <Dialog open={mode === "create"} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Create Invoice</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleCreateSubmit}>
-            <FormSection title="Details" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Sales Order</Label>
-                  <Input value={form.sales_order_id} readOnly className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Invoice Date</Label>
-                  <Input type="date" value={form.invoice_date} onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Base Amount</Label>
-                  <Input type="number" value={createAmount} onChange={(e) => setCreateAmount(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>GST %</Label>
-                  <Input type="number" value={createGstPct} onChange={(e) => setCreateGstPct(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tax</Label>
-                  <Input value={((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100} readOnly className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Grand Total</Label>
-                  <Input value={(parseFloat(createAmount) || 0) + ((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100} readOnly className="bg-muted" />
-                </div>
-              </div>
-            </FormSection>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-              <Button type="submit">Create Invoice</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </>
+      )}
 
       <Dialog open={mode === "view" || mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
         <DialogContent className="max-w-md">

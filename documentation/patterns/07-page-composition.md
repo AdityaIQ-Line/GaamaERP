@@ -18,6 +18,8 @@ PageShell
 This structure is **fixed**. The only variation is which page header variant you pick and whether
 a page footer is needed.
 
+**Gaama / IQLDS note:** The scrollable content `<div>` uses **`flex-1 overflow-auto`** on the **default page surface** (same as list views). **Do not** wrap the whole body in **`bg-muted`** — use **cards/tables** for contrast. Full-page create flows may add an inner **`w-full h-full`** wrapper and **`space-y-4 px-6 py-4 h-full`** around forms per **[CREATE_PAGES_DESIGN_INTENT.md](../CREATE_PAGES_DESIGN_INTENT.md) §3.3**.
+
 ---
 
 ## Complete skeleton — copy and adapt this
@@ -392,7 +394,7 @@ Auth pages (`/login`, etc.) and error pages go outside `AppShell` — see patter
 
 - ✅ Every page starts with `<PageShell>`.
 - ✅ `PageShell` must always contain a page header as its first child.
-- ✅ The scrollable content area must always be `flex-1 overflow-auto`.
+- ✅ The scrollable content area must always be `flex-1 overflow-auto` (same default surface as IQLDS list pages — do not tint the whole content column `bg-muted`).
 - ✅ Use `space-y-6` between top-level sections in the content area.
 - ✅ Register every new page as a child of `AppShell` in `router.tsx`.
 - ✅ Wrap lazy-loaded pages in `<LazyPage>`.

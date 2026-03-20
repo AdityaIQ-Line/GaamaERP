@@ -49,6 +49,10 @@ export interface Customer {
   state?: string
   pincode?: string
   kyc_document?: string
+  trade_license_number?: string
+  iec_code?: string
+  msme_registration?: string
+  supporting_documents?: string
   // Step 3 Tax/Legal/Financial (C.1)
   gst_registration_type?: string
   state_code?: string

@@ -51,6 +51,8 @@ import type { GRN } from "@/lib/gaama-types"
 import { Plus, PackageCheck, Search, Printer, Send, Eye, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { cn } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
 
@@ -322,6 +324,555 @@ export function GRNPage() {
     )
   })
 
+  const soOrderedQty =
+    Number(selectedOrder?.quantity ?? selectedOrder?.items?.[0]?.quantity ?? 0) || 0
+  const soUnitLabel = selectedOrder?.unit ?? "carton"
+  const stickerRangeDisplay =
+    selectedOrder?.sticker_range_start != null && selectedOrder?.sticker_range_end != null
+      ? `${selectedOrder.sticker_range_start} to ${selectedOrder.sticker_range_end}`
+      : "—"
+
+  const selectTriggerPencil = "h-9 w-full rounded-lg border border-transparent bg-[#f3f3f5] shadow-none focus:ring-1 focus:ring-primary/30"
+  const inputPencil = "h-9 rounded-lg border-[#d1d5dc] bg-white"
+  const inputPencilMuted = "h-9 rounded-lg border-transparent bg-[#f3f3f5] shadow-none"
+
+  const grnEditorForm = (
+    <form onSubmit={mode === "edit" ? handleUpdateSubmit : handleSubmit} className={mode === "create" ? "space-y-4" : undefined}>
+      {mode === "create" ? (
+        <>
+          {/* Card: Select Customer & Sales Order — matches Pencil node 4f5Wf */}
+          <div className="rounded-[10px] border border-[#e5e7eb] bg-white p-5 md:p-6 space-y-4 shadow-sm">
+            <h2 className="text-base font-semibold text-[#0a0a0a]">Select Customer &amp; Sales Order</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-[#0a0a0a]">
+                  <span className="text-destructive">*</span> Customer Name
+                </Label>
+                <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setSalesOrderId(""); }}>
+                  <SelectTrigger className={selectTriggerPencil}>
+                    <SelectValue placeholder="Select customer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((c) => (
+                      <SelectItem key={c.customer_id} value={c.customer_id}>
+                        {c.customer_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-[#0a0a0a]">
+                  <span className="text-destructive">*</span> Sales Order Number
+                </Label>
+                <Select value={salesOrderId} onValueChange={setSalesOrderId}>
+                  <SelectTrigger className={selectTriggerPencil}>
+                    <SelectValue placeholder="Select sales order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableOrders.map((o) => (
+                      <SelectItem key={o.sales_order_id} value={o.sales_order_id}>
+                        {o.sales_order_number ?? o.order_number} ({o.product_name ?? o.category_name})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {selectedOrder && (
+              <div
+                className="rounded-[10px] border border-[#96f7e4] p-3 md:p-4 space-y-3"
+                style={{
+                  background: "linear-gradient(135deg, #f0fdfaf2 0%, #eff6fff2 100%)",
+                }}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[#0b4f4a]">Sales Order Information</h3>
+                  <Badge className="border-0 bg-primary text-primary-foreground hover:bg-primary">From sales order</Badge>
+                </div>
+                <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+                  {[
+                    { label: "Sales Order ID", value: selectedOrder.sales_order_number ?? selectedOrder.order_number ?? selectedOrder.sales_order_id },
+                    { label: "Order Date", value: selectedOrder.order_date?.slice(0, 10) ?? "—" },
+                    { label: "Customer Name", value: selectedOrder.customer_name ?? data.getCustomer(selectedOrder.customer_id)?.customer_name ?? "—" },
+                    { label: "Product Name", value: selectedOrder.product_name ?? "—" },
+                    { label: "Product Category", value: selectedOrder.category_name ?? "—" },
+                    { label: "Total Ordered Quantity", value: String(soOrderedQty) },
+                    { label: "Measurement Type", value: selectedOrder.measurement_type ?? selectedOrder.unit ?? "—" },
+                    { label: "Sticker Range (Mapped)", value: stickerRangeDisplay },
+                  ].map((row) => (
+                    <div key={row.label} className="space-y-1">
+                      <Label className="text-xs font-medium text-muted-foreground">{row.label}</Label>
+                      <Input readOnly value={row.value} className={cn(inputPencil, "h-8 text-sm opacity-90")} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Card: GRN Details */}
+          <div className="rounded-[10px] border border-[#e5e7eb] bg-white p-5 md:p-6 space-y-6 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#0a0a0a]">GRN Details</h2>
+            <div className="grid h-fit grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> GRN Number
+                </Label>
+                <Input readOnly value="(Auto-generated on save)" className={cn(inputPencilMuted, "text-muted-foreground")} />
+                <p className="text-xs text-muted-foreground">Auto-generated</p>
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">Purchase Order Date</Label>
+                <Input type="date" value={purchaseOrderDate} onChange={(e) => setPurchaseOrderDate(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Customer Challan Number
+                </Label>
+                <Input value={customerChallanNumber} onChange={(e) => setCustomerChallanNumber(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium">Radiation Dose (Auto-filled)</Label>
+                <Input readOnly value={radiationDose} className={cn(inputPencilMuted, "text-muted-foreground")} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">Radiation Unit</Label>
+                <Input readOnly value={radiationUnit} className={cn(inputPencilMuted, "text-muted-foreground")} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">Received Date</Label>
+                <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Received Quantity
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={receivedQuantity}
+                  onChange={(e) => setReceivedQuantity(e.target.value)}
+                  placeholder={selectedOrder ? `Max: ${soOrderedQty} ${soUnitLabel}` : "Enter quantity"}
+                  className={inputPencil}
+                />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Received By
+                </Label>
+                <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">Vehicle Number</Label>
+                <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Net Weight (kg)
+                </Label>
+                <Input type="number" min={0} step="any" value={netWeight} onChange={(e) => setNetWeight(e.target.value)} className={inputPencil} />
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Gross Weight (kg)
+                </Label>
+                <Input type="number" min={0} step="any" value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} className={inputPencil} />
+                <p className="text-xs text-muted-foreground">Must be &gt;= Net Weight</p>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">Remarks</Label>
+              <Textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                rows={4}
+                className="min-h-[100px] rounded-lg border-[#d1d5dc] bg-white resize-y"
+              />
+            </div>
+          </div>
+
+          {/* Card: Pricing & GST */}
+          <div className="rounded-[10px] border border-[#e5e7eb] bg-white p-5 md:p-6 space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#0a0a0a]">Pricing &amp; GST Details</h2>
+            <p className="text-sm text-[#4a5565]">
+              Pricing information will be auto-fetched when creating Challan. Rate per unit is optional.
+            </p>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Rate per Unit (₹) <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  placeholder="Enter rate"
+                  className={inputPencilMuted}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Amount (₹)</Label>
+                <Input
+                  readOnly
+                  value={rate ? totalAmount.toFixed(2) : ""}
+                  placeholder="Enter amount"
+                  className={cn(inputPencilMuted, "text-muted-foreground")}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">
+                  <span className="text-destructive">*</span> GST Rate (%)
+                </Label>
+                <Select value={gstPercentage} onValueChange={setGstPercentage}>
+                  <SelectTrigger className={selectTriggerPencil}>
+                    <SelectValue placeholder="Select GST %" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {["0", "5", "12", "18", "28"].map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}%
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">GST Amount (₹)</Label>
+                <Input
+                  readOnly
+                  value={rate ? gstAmount.toFixed(2) : ""}
+                  placeholder="Calculated automatically"
+                  className={cn(inputPencilMuted, !rate && "text-muted-foreground")}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Total with GST (₹)</Label>
+                <Input
+                  readOnly
+                  value={rate ? totalWithGst.toFixed(2) : ""}
+                  placeholder="Calculated automatically"
+                  className={cn(inputPencilMuted, "font-semibold", !rate && "text-muted-foreground font-normal")}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Card: Processing & Storage */}
+          <div className="rounded-[10px] border border-[#e5e7eb] bg-white p-5 md:p-6 space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-[#0a0a0a]">Processing &amp; Storage Details</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Processing Priority</Label>
+                <Select value={processingPriority || "__none__"} onValueChange={(v) => setProcessingPriority(v === "__none__" ? "" : v)}>
+                  <SelectTrigger className={selectTriggerPencil}>
+                    <SelectValue placeholder="Select priority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">—</SelectItem>
+                    <SelectItem value="Standard">Standard</SelectItem>
+                    <SelectItem value="Normal">Normal</SelectItem>
+                    <SelectItem value="High">High</SelectItem>
+                    <SelectItem value="Urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Storage BIN Description</Label>
+                <Input
+                  value={binDescription}
+                  onChange={(e) => setBinDescription(e.target.value)}
+                  placeholder="Enter bin description for clarity"
+                  className={inputPencilMuted}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-1">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                if (!window.confirm("Discard changes?")) return
+                setMode(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" variant="default" className="h-9 rounded-lg px-8 font-medium shadow-none">
+              Create GRN
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <FormSection title="Section 1 – Customer & Sales Order" noSeparator>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Customer *</Label>
+                  <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setSalesOrderId(""); }} disabled={isView}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((c) => (
+                        <SelectItem key={c.customer_id} value={c.customer_id}>
+                          {c.customer_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Sales Order *</Label>
+                  <Select value={salesOrderId} onValueChange={setSalesOrderId} disabled={isView}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select sales order" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableOrders.map((o) => (
+                        <SelectItem key={o.sales_order_id} value={o.sales_order_id}>
+                          {o.sales_order_number ?? o.order_number} ({o.product_name ?? o.category_name})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              {selectedOrder && (
+                <p className="text-sm text-muted-foreground">
+                  Product: {selectedOrder.product_name ?? selectedOrder.category_name} • Category: {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
+                </p>
+              )}
+            </div>
+          </FormSection>
+
+          <FormSection title="Section 2 – GRN Details" noSeparator>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>GRN Number</Label>
+                <Input value={mode === "create" ? "(Auto on save)" : (data.getGRN(selectedId ?? "")?.grn_number ?? "—")} readOnly className="bg-muted" />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Customer Challan Number *</Label>
+                  <Input
+                    value={customerChallanNumber}
+                    onChange={(e) => setCustomerChallanNumber(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Purchase Order Date</Label>
+                  <Input
+                    type="date"
+                    value={purchaseOrderDate}
+                    onChange={(e) => setPurchaseOrderDate(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Received Date</Label>
+                  <Input
+                    type="date"
+                    value={receivedDate}
+                    onChange={(e) => setReceivedDate(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Received Quantity *</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    value={receivedQuantity}
+                    onChange={(e) => setReceivedQuantity(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Received By *</Label>
+                  <Input
+                    value={receivedBy}
+                    onChange={(e) => setReceivedBy(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Vehicle Number</Label>
+                  <Input
+                    value={vehicleNumber}
+                    onChange={(e) => setVehicleNumber(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Net Weight</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={netWeight}
+                    onChange={(e) => setNetWeight(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gross Weight</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={grossWeight}
+                    onChange={(e) => setGrossWeight(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Radiation Dose</Label>
+                  <Input
+                    value={radiationDose}
+                    onChange={(e) => setRadiationDose(e.target.value)}
+                    readOnly={isView}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Radiation Unit</Label>
+                  <Input value={radiationUnit} onChange={(e) => setRadiationUnit(e.target.value)} readOnly={isView} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Remarks</Label>
+                <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} readOnly={isView} />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Section 3 – Pricing & GST" noSeparator>
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Rate (optional)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  readOnly={isView}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Total Amount</Label>
+                <Input value={rate ? totalAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
+              </div>
+              <div className="space-y-2">
+                <Label>GST %</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={gstPercentage}
+                  onChange={(e) => setGstPercentage(e.target.value)}
+                  readOnly={isView}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>GST Amount</Label>
+                <Input value={rate ? gstAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
+              </div>
+              <div className="space-y-2">
+                <Label>Total with GST</Label>
+                <Input value={rate ? totalWithGst.toFixed(2) : "—"} readOnly className="bg-muted" />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Section 4 – Processing" noSeparator>
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Processing Priority</Label>
+                <Input
+                  value={processingPriority}
+                  onChange={(e) => setProcessingPriority(e.target.value)}
+                  readOnly={isView}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Bin Description</Label>
+                <Input
+                  value={binDescription}
+                  onChange={(e) => setBinDescription(e.target.value)}
+                  readOnly={isView}
+                />
+              </div>
+            </div>
+          </FormSection>
+
+          {!isView && (
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMode(null)}>
+                Cancel
+              </Button>
+              <Button type="submit">{mode === "edit" ? "Save" : "Create GRN"}</Button>
+            </DialogFooter>
+          )}
+        </>
+      )}
+    </form>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title="Create GRN"
+              noBorder
+              backButton={{
+                onClick: () => {
+                  if (!window.confirm("Discard changes?")) return
+                  setMode(null)
+                },
+              }}
+            />
+            <div className="space-y-4 px-6 py-4 h-full">{grnEditorForm}</div>
+          </div>
+        </div>
+        <AlertDialog open={sendForProcessingId !== null} onOpenChange={(open) => !open && setSendForProcessingId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Send for Processing</AlertDialogTitle>
+              <AlertDialogDescription>
+                Send this GRN to Process Tracking? Status will be set to In Progress.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleSendForProcessingConfirm}>Send</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <Dialog open={printStickerId !== null} onOpenChange={(open) => !open && setPrintStickerId(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Print Sticker</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              Print sticker for GRN: {printStickerId ? data.getGRN(printStickerId)?.grn_number ?? printStickerId : ""}
+            </p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPrintStickerId(null)}>Cancel</Button>
+              <Button onClick={() => { window.print(); setPrintStickerId(null); }}><Printer className="h-4 w-4 mr-2" />Print</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -411,225 +962,14 @@ export function GRNPage() {
         )}
       </div>
 
-      <Dialog open={mode !== null} onOpenChange={(open) => !open && setMode(null)}>
+            <Dialog open={mode === "edit" || mode === "view"} onOpenChange={(open) => !open && setMode(null)}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {mode === "create" ? "Create GRN" : mode === "edit" ? "Edit GRN" : "GRN Details"}
+              {mode === "edit" ? "Edit GRN" : "GRN Details"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={mode === "edit" ? handleUpdateSubmit : handleSubmit}>
-            <FormSection title="Section 1 – Customer & Sales Order" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Customer *</Label>
-                    <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setSalesOrderId(""); }} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((c) => (
-                          <SelectItem key={c.customer_id} value={c.customer_id}>
-                            {c.customer_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sales Order *</Label>
-                    <Select value={salesOrderId} onValueChange={setSalesOrderId} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select sales order" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {availableOrders.map((o) => (
-                          <SelectItem key={o.sales_order_id} value={o.sales_order_id}>
-                            {o.sales_order_number ?? o.order_number} ({o.product_name ?? o.category_name})
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                {selectedOrder && (
-                  <p className="text-sm text-muted-foreground">
-                    Product: {selectedOrder.product_name ?? selectedOrder.category_name} • Category: {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
-                  </p>
-                )}
-              </div>
-            </FormSection>
-
-            <FormSection title="Section 2 – GRN Details" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>GRN Number</Label>
-                  <Input value={mode === "create" ? "(Auto on save)" : (data.getGRN(selectedId ?? "")?.grn_number ?? "—")} readOnly className="bg-muted" />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Customer Challan Number *</Label>
-                    <Input
-                      value={customerChallanNumber}
-                      onChange={(e) => setCustomerChallanNumber(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Purchase Order Date</Label>
-                    <Input
-                      type="date"
-                      value={purchaseOrderDate}
-                      onChange={(e) => setPurchaseOrderDate(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Received Date</Label>
-                    <Input
-                      type="date"
-                      value={receivedDate}
-                      onChange={(e) => setReceivedDate(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Received Quantity *</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      value={receivedQuantity}
-                      onChange={(e) => setReceivedQuantity(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Received By *</Label>
-                    <Input
-                      value={receivedBy}
-                      onChange={(e) => setReceivedBy(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Vehicle Number</Label>
-                    <Input
-                      value={vehicleNumber}
-                      onChange={(e) => setVehicleNumber(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Net Weight</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={netWeight}
-                      onChange={(e) => setNetWeight(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Gross Weight</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={grossWeight}
-                      onChange={(e) => setGrossWeight(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Radiation Dose</Label>
-                    <Input
-                      value={radiationDose}
-                      onChange={(e) => setRadiationDose(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Radiation Unit</Label>
-                    <Input value={radiationUnit} onChange={(e) => setRadiationUnit(e.target.value)} readOnly={isView} />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Remarks</Label>
-                  <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} readOnly={isView} />
-                </div>
-              </div>
-            </FormSection>
-
-            <FormSection title="Section 3 – Pricing & GST" noSeparator>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>Rate (optional)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={rate}
-                    onChange={(e) => setRate(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Total Amount</Label>
-                  <Input value={rate ? totalAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>GST %</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={gstPercentage}
-                    onChange={(e) => setGstPercentage(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>GST Amount</Label>
-                  <Input value={rate ? gstAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Total with GST</Label>
-                  <Input value={rate ? totalWithGst.toFixed(2) : "—"} readOnly className="bg-muted" />
-                </div>
-              </div>
-            </FormSection>
-
-            <FormSection title="Section 4 – Processing" noSeparator>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>Processing Priority</Label>
-                  <Input
-                    value={processingPriority}
-                    onChange={(e) => setProcessingPriority(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Bin Description</Label>
-                  <Input
-                    value={binDescription}
-                    onChange={(e) => setBinDescription(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-              </div>
-            </FormSection>
-
-            {!isView && (
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)}>
-                  Cancel
-                </Button>
-                <Button type="submit">{mode === "edit" ? "Save" : "Create GRN"}</Button>
-              </DialogFooter>
-            )}
-          </form>
+          {grnEditorForm}
         </DialogContent>
       </Dialog>
 

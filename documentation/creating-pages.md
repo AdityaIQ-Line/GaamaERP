@@ -6,6 +6,34 @@ This guide explains how to create new pages in the application.
 
 Pages in this application are React components that represent full views or screens. They are typically placed in the `src/pages` directory (or similar structure based on your routing setup).
 
+### Gaama ERP — full-page create / generate flows
+
+Use **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md)** for add/create/generate screens: **IQLDS** page title + back (**`PageHeaderWithBack`**, Pattern 04), **full-width** main column with header and form/cards sharing the same **`px-6`** as list views, and form/card rules. The DOM structure (scroll wrapper, **`w-full h-full`**, **`space-y-4 px-6 py-4 h-full`** for the form stack) is spelled out in that doc **§3.3**.
+
+### Gaama ERP — list / index pages (IQLDS)
+
+Module list screens under **`AppShell`** use the same **default page surface** as the app chrome — **do not** tint the scrollable content column with **`bg-muted`** or **`bg-muted/40`**. Visual separation from the page comes from **`PageHeader`** (`bg-background`) and from **tables/cards**, not from a muted full-page canvas. See **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md) §3.1** and **[Pattern 07 — Page composition](./patterns/07-page-composition.md)**.
+
+Typical shape (matches `src/pages/gaama/*` list views):
+
+```tsx
+import { PageShell } from "@/components/layouts/page-shell"
+import { PageHeader } from "@/components/blocks/page-header"
+
+export function ExampleListPage() {
+  return (
+    <PageShell>
+      <PageHeader title="Example Master" actions={/* … */} />
+      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
+        {/* filters, table, empty states */}
+      </div>
+    </PageShell>
+  )
+}
+```
+
+For layout context (sidebar + main), see **[page-layouts.md](./page-layouts.md)** § IQLine / Gaama page body.
+
 ## Basic Page Structure
 
 A basic page component should follow this structure:

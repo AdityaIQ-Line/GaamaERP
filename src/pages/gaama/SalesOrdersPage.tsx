@@ -30,7 +30,6 @@ import {
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -51,15 +50,21 @@ import { Plus, ShoppingCart, Search, PackageCheck, Eye, Pencil, CheckCircle } fr
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Link } from "react-router-dom"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 
 type ModalMode = "create" | "edit" | "view" | null
 
 const MEASUREMENT_TYPES = ["carton", "bag", "weight"]
 const ORDER_BASIS_OPTIONS = [
-  { value: "standard", label: "Standard" },
+  { value: "standard", label: "Standard (Carton/Bag)" },
   { value: "vehicle", label: "Vehicle" },
   { value: "weight", label: "Weight" },
 ]
+const MEASUREMENT_LABELS: Record<string, string> = {
+  carton: "Carton",
+  bag: "Bag",
+  weight: "Weight",
+}
 const WEIGHT_TYPE_OPTIONS = [
   { value: "net", label: "Net" },
   { value: "gross", label: "Gross" },
@@ -101,6 +106,8 @@ export function SalesOrdersPage() {
   const [stickerRangeStart, setStickerRangeStart] = React.useState<string>("")
   const [stickerRangeEnd, setStickerRangeEnd] = React.useState<string>("")
   const [notes, setNotes] = React.useState("")
+  /** Empty = use qty × rate from Rate Master on save (Pencil: Value of Goods). */
+  const [valueOfGoods, setValueOfGoods] = React.useState("")
   const [approveTargetId, setApproveTargetId] = React.useState<string | null>(null)
 
   const allowed = canAccess(data.currentRole, "sales-orders")
@@ -147,6 +154,7 @@ export function SalesOrdersPage() {
     setStickerRangeStart("")
     setStickerRangeEnd("")
     setNotes("")
+    setValueOfGoods("")
     setSelectedId(null)
     setMode("create")
   }
@@ -166,6 +174,7 @@ export function SalesOrdersPage() {
     setStickerRangeStart(o.sticker_range_start != null ? String(o.sticker_range_start) : "")
     setStickerRangeEnd(o.sticker_range_end != null ? String(o.sticker_range_end) : "")
     setNotes(o.notes ?? "")
+    setValueOfGoods(o.total_amount != null ? String(o.total_amount) : "")
     setSelectedId(o.sales_order_id)
     setMode("edit")
   }
@@ -185,6 +194,7 @@ export function SalesOrdersPage() {
     setStickerRangeStart(o.sticker_range_start != null ? String(o.sticker_range_start) : "")
     setStickerRangeEnd(o.sticker_range_end != null ? String(o.sticker_range_end) : "")
     setNotes(o.notes ?? "")
+    setValueOfGoods(o.total_amount != null ? String(o.total_amount) : "")
     setSelectedId(o.sales_order_id)
     setMode("view")
   }
@@ -197,12 +207,16 @@ export function SalesOrdersPage() {
     const rate = data.getRatesByCategory(categoryId)[0]
     const rateVal = rate?.rate_value ?? 0
     const qty = qtyNum || 0
-    const totalAmount = qty * rateVal
+    const computedTotal = qty * rateVal
+    const parsedGoods = valueOfGoods.trim() === "" ? NaN : Number(valueOfGoods)
+    const totalAmount =
+      !isNaN(parsedGoods) && parsedGoods >= 0 ? parsedGoods : computedTotal
+    const lineRate = qty > 0 ? totalAmount / qty : rateVal
     const item: SalesOrderItem = {
       item_id: `item_${Date.now()}`,
       category_id: categoryId,
       quantity: qty,
-      rate: rateVal,
+      rate: lineRate,
       total_price: totalAmount,
     }
     return {
@@ -245,11 +259,11 @@ export function SalesOrdersPage() {
     return null
   }
 
-  const handleSaveDraft = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSaveDraft = (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault()
     const err = validate()
     if (err) {
-      alert(err)
+      toast.error(err)
       return
     }
     if (mode === "create") {
@@ -263,11 +277,11 @@ export function SalesOrdersPage() {
     }
   }
 
-  const handleSaveAndApprove = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSaveAndApprove = (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault()
     const err = validate()
     if (err) {
-      alert(err)
+      toast.error(err)
       return
     }
     if (mode === "create") {
@@ -310,6 +324,392 @@ export function SalesOrdersPage() {
   const grnsForOrder = (salesOrderId: string) =>
     data.grns.filter((g) => g.sales_order_id === salesOrderId)
 
+  const previewRateVal = categoryId ? data.getRatesByCategory(categoryId)[0]?.rate_value ?? 0 : 0
+  const computedValueOfGoods = (qtyNum || 0) * previewRateVal
+
+  const orderBasisHelp =
+    orderBasis === "vehicle"
+      ? 'Invoice will use "By Vehicle" pricing from Rate Master.'
+      : orderBasis === "weight"
+        ? 'Invoice will use "By Weight" pricing from Rate Master.'
+        : 'Invoice will use "By Carton/Bag" pricing from Rate Master.'
+
+  const salesOrderEditorContent = (
+    <div className="space-y-6">
+            {/* Pencil oCP5D — top card: SO number + date */}
+            <div className="rounded-lg border border-border bg-card p-6">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Sales Order Number</Label>
+                  <Input
+                    value={
+                      mode === "create"
+                        ? "(Auto on save)"
+                        : data.getSalesOrder(selectedId ?? "")?.sales_order_number ??
+                          data.getSalesOrder(selectedId ?? "")?.order_number ??
+                          "—"
+                    }
+                    readOnly
+                    className="h-9 font-mono text-sm bg-muted/40 opacity-90"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>
+                    Date <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    value={orderDate}
+                    onChange={(e) => setOrderDate(e.target.value)}
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Customer Field Details */}
+            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+              <h2 className="text-lg font-semibold">Customer Field Details</h2>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Customer Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={customerId} onValueChange={setCustomerId} disabled={isView}>
+                    <SelectTrigger className="h-9 min-w-0 bg-muted/60 border-border">
+                      <SelectValue placeholder="Search and select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customers.map((c) => (
+                        <SelectItem key={c.customer_id} value={c.customer_id}>
+                          {c.customer_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>Customer Address</Label>
+                  <Input
+                    value={selectedCustomer?.billing_address ?? ""}
+                    readOnly
+                    placeholder="—"
+                    className="h-9 min-w-0 bg-muted/60 border-border"
+                  />
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>Customer Email</Label>
+                  <Input
+                    value={selectedCustomer?.email ?? ""}
+                    readOnly
+                    placeholder="—"
+                    className="h-9 min-w-0 bg-muted/60 border-border"
+                  />
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>Customer Phone</Label>
+                  <Input
+                    value={selectedCustomer?.phone ?? ""}
+                    readOnly
+                    placeholder="—"
+                    className="h-9 bg-muted/60 border-border"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Order Details */}
+            <div className="rounded-lg border border-border bg-card p-6 space-y-4">
+              <h2 className="text-lg font-semibold">Order Details</h2>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Measurement Type <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={measurementType}
+                    onValueChange={(v: "carton" | "bag" | "weight") => setMeasurementType(v)}
+                    disabled={isView}
+                  >
+                    <SelectTrigger className="h-9 bg-muted/60 border-border">
+                      <SelectValue placeholder="Select measurement type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MEASUREMENT_TYPES.map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {MEASUREMENT_LABELS[t] ?? t}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Quantity <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder={measurementType ? "Enter quantity" : "Select measurement type first"}
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <div className="space-y-2 min-w-0">
+                  <Label>Value of Goods (₹)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={valueOfGoods}
+                    onChange={(e) => setValueOfGoods(e.target.value)}
+                    placeholder="Enter value of goods"
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+                  />
+                  {!isView && valueOfGoods.trim() === "" && categoryId && (
+                    <p className="text-xs text-muted-foreground">
+                      From Rate Master: ₹{computedValueOfGoods.toLocaleString("en-IN")} (qty × rate)
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Product Category <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={categoryId} onValueChange={setCategoryId} disabled={isView}>
+                    <SelectTrigger className="h-9 bg-muted/60 border-border">
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.category_id} value={c.category_id}>
+                          {c.category_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-primary">From Category Master</p>
+                </div>
+
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Product Name <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={productId} onValueChange={setProductId} disabled={isView || !categoryId}>
+                    <SelectTrigger
+                      className={`h-9 bg-muted/60 border-border ${!categoryId ? "opacity-50" : ""}`}
+                    >
+                      <SelectValue placeholder={categoryId ? "Select product" : "Select category first"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {products.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-primary">From Category Master</p>
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Gross Weight (kg) <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={grossWeight}
+                    onChange={(e) => setGrossWeight(e.target.value)}
+                    placeholder="Enter gross weight"
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <div className="space-y-2 min-w-0">
+                  <Label>
+                    Net Weight (kg) <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={netWeight}
+                    onChange={(e) => setNetWeight(e.target.value)}
+                    placeholder="Enter net weight"
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+                  />
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <Label>Expected Delivery Date</Label>
+                  <Input
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    readOnly={isView}
+                    className="h-9 bg-muted/60 border-border"
+                  />
+                </div>
+
+                <div className="space-y-2 min-w-0 sm:col-span-2 lg:col-span-2">
+                  <Label>
+                    Order Basis <span className="text-destructive">*</span>
+                  </Label>
+                  <Select
+                    value={orderBasis}
+                    onValueChange={(v: "standard" | "vehicle" | "weight") => setOrderBasis(v)}
+                    disabled={isView}
+                  >
+                    <SelectTrigger className="h-9 w-full bg-muted/60 border-border">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ORDER_BASIS_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>
+                          {opt.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-primary">{orderBasisHelp}</p>
+                </div>
+
+                {orderBasis === "weight" && (
+                  <div className="space-y-2 min-w-0 sm:col-span-2 lg:col-span-2">
+                    <Label>Weight type for invoicing</Label>
+                    <Select
+                      value={weightTypeForInvoicing}
+                      onValueChange={(v: "net" | "gross") => setWeightTypeForInvoicing(v)}
+                      disabled={isView}
+                    >
+                      <SelectTrigger className="h-9 w-full bg-muted/60 border-border">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {WEIGHT_TYPE_OPTIONS.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value}>
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+              </div>
+            </div>
+
+            {isView && selectedId && (() => {
+              const linkedGrns = data.grns.filter((g) => g.sales_order_id === selectedId)
+              if (linkedGrns.length === 0) return null
+              return (
+                <div className="rounded-lg border border-border bg-card p-6">
+                  <FormSection title="Linked GRNs" noSeparator>
+                    <div className="space-y-2 py-4">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>GRN No</TableHead>
+                            <TableHead>Product</TableHead>
+                            <TableHead>Quantity</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-right">Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {linkedGrns.map((g) => (
+                            <TableRow key={g.grn_id}>
+                              <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
+                              <TableCell>{g.product_name ?? g.category_name ?? "—"}</TableCell>
+                              <TableCell>
+                                {g.received_quantity ?? "—"} {g.unit ?? ""}
+                              </TableCell>
+                              <TableCell>{g.status ?? "—"}</TableCell>
+                              <TableCell className="text-right">
+                                <Button variant="ghost" size="sm" asChild>
+                                  <Link to="/grn" state={{ openGrnId: g.grn_id }}>
+                                    View
+                                  </Link>
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </FormSection>
+                </div>
+              )
+            })()}
+
+            {isView ? (
+              <DialogFooter className="border-t border-border pt-6 sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setMode(null)}>
+                  Close
+                </Button>
+              </DialogFooter>
+            ) : (
+              <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t">
+                <Button type="button" variant="outline" onClick={() => {
+                  if (!window.confirm("Discard changes?")) return
+                  setMode(null)
+                }}>
+                  Cancel
+                </Button>
+                <Button type="button" variant="outline" onClick={handleSaveDraft}>
+                  Save
+                </Button>
+                <Button type="button" variant="default" onClick={handleSaveAndApprove}>
+                  Save & Approve
+                </Button>
+              </div>
+            )}
+          </div>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title="Create Sales Order"
+              noBorder
+              backButton={{
+                onClick: () => {
+                  if (!window.confirm("Discard changes?")) return
+                  setMode(null)
+                },
+              }}
+            />
+            <div className="space-y-4 px-6 py-4 h-full">{salesOrderEditorContent}</div>
+          </div>
+        </div>
+        <AlertDialog open={approveTargetId !== null} onOpenChange={(open) => !open && setApproveTargetId(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Approve order</AlertDialogTitle>
+              <AlertDialogDescription>
+                Approve this sales order? It will be available for GRN creation.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleApproveConfirm}>Approve</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       <PageHeader
@@ -339,14 +739,16 @@ export function SalesOrdersPage() {
           </Empty>
         ) : (
           <>
-            <div className="relative max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by order number or customer"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex flex-wrap items-center gap-4">
+              <div className="relative max-w-xs flex-1 min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by order number or customer"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
             <div className="rounded-md border">
               <Table>
@@ -406,261 +808,14 @@ export function SalesOrdersPage() {
         )}
       </div>
 
-      <Dialog open={mode !== null} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Create Sales Order" : mode === "edit" ? "Edit Order" : "Order Details"}
+      <Dialog open={mode === "edit" || mode === "view"} onOpenChange={(open) => !open && setMode(null)}>
+        <DialogContent className="max-w-4xl w-[calc(100vw-2rem)] max-h-[90vh] gap-0 overflow-y-auto border-border p-6 sm:p-6">
+          <DialogHeader className="space-y-0 pb-6 text-left">
+            <DialogTitle className="text-lg font-semibold">
+              {mode === "edit" ? "Edit Sales Order" : "Order Details"}
             </DialogTitle>
           </DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); handleSaveDraft(e); }}>
-            <FormSection title="Order" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Sales Order Number</Label>
-                    <Input
-                      value={mode === "create" ? "(Auto on save)" : (data.getSalesOrder(selectedId ?? "")?.sales_order_number ?? data.getSalesOrder(selectedId ?? "")?.order_number ?? "—")}
-                      readOnly
-                      className="bg-muted"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Date *</Label>
-                    <Input
-                      type="date"
-                      value={orderDate}
-                      onChange={(e) => setOrderDate(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label>Customer *</Label>
-                    <Select value={customerId} onValueChange={setCustomerId} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {customers.map((c) => (
-                          <SelectItem key={c.customer_id} value={c.customer_id}>
-                            {c.customer_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {selectedCustomer && (
-                      <p className="text-sm text-muted-foreground">
-                        {selectedCustomer.billing_address}
-                        {selectedCustomer.email ? ` • ${selectedCustomer.email}` : ""}
-                        {selectedCustomer.phone ? ` • ${selectedCustomer.phone}` : ""}
-                      </p>
-                    )}
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Category *</Label>
-                    <Select value={categoryId} onValueChange={setCategoryId} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((c) => (
-                          <SelectItem key={c.category_id} value={c.category_id}>
-                            {c.category_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Product *</Label>
-                    <Select value={productId} onValueChange={setProductId} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select product" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {products.map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Measurement Type *</Label>
-                    <Select value={measurementType} onValueChange={(v: "carton" | "bag" | "weight") => setMeasurementType(v)} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {MEASUREMENT_TYPES.map((t) => (
-                          <SelectItem key={t} value={t}>
-                            {t}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Quantity *</Label>
-                    <Input
-                      type="number"
-                      min={1}
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      placeholder={measurementType === "weight" ? "kg" : measurementType}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Net Weight</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={netWeight}
-                      onChange={(e) => setNetWeight(e.target.value)}
-                      placeholder="kg"
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Gross Weight</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={grossWeight}
-                      onChange={(e) => setGrossWeight(e.target.value)}
-                      placeholder="kg"
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Order basis</Label>
-                    <Select value={orderBasis} onValueChange={(v: "standard" | "vehicle" | "weight") => setOrderBasis(v)} disabled={isView}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {ORDER_BASIS_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {orderBasis === "weight" && (
-                    <div className="space-y-2">
-                      <Label>Weight type for invoicing</Label>
-                      <Select value={weightTypeForInvoicing} onValueChange={(v: "net" | "gross") => setWeightTypeForInvoicing(v)} disabled={isView}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {WEIGHT_TYPE_OPTIONS.map((opt) => (
-                            <SelectItem key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  {(measurementType === "carton" || measurementType === "bag") && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Sticker range start</Label>
-                        <Input
-                          value={stickerRangeStart}
-                          onChange={(e) => setStickerRangeStart(e.target.value)}
-                          readOnly={isView}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Sticker range end</Label>
-                        <Input
-                          value={stickerRangeEnd}
-                          onChange={(e) => setStickerRangeEnd(e.target.value)}
-                          readOnly={isView}
-                        />
-                      </div>
-                    </>
-                  )}
-                  <div className="space-y-2 col-span-2">
-                    <Label>Delivery Date</Label>
-                    <Input
-                      type="date"
-                      value={deliveryDate}
-                      onChange={(e) => setDeliveryDate(e.target.value)}
-                      readOnly={isView}
-                    />
-                  </div>
-                  <div className="space-y-2 col-span-2">
-                    <Label>Notes</Label>
-                    <Textarea
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Optional notes"
-                      readOnly={isView}
-                    />
-                  </div>
-                </div>
-              </div>
-            </FormSection>
-            {isView && selectedId && (() => {
-              const linkedGrns = data.grns.filter((g) => g.sales_order_id === selectedId)
-              if (linkedGrns.length === 0) return null
-              return (
-                <FormSection title="Linked GRNs" noSeparator>
-                  <div className="space-y-2 py-4">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>GRN No</TableHead>
-                          <TableHead>Product</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {linkedGrns.map((g) => (
-                          <TableRow key={g.grn_id}>
-                            <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
-                            <TableCell>{g.product_name ?? g.category_name ?? "—"}</TableCell>
-                            <TableCell>{g.received_quantity ?? "—"} {g.unit ?? ""}</TableCell>
-                            <TableCell>{g.status ?? "—"}</TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" asChild>
-                                <Link to="/grn" state={{ openGrnId: g.grn_id }}>
-                                  View
-                                </Link>
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </FormSection>
-              )
-            })()}
-            {!isView && (
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)}>
-                  Cancel
-                </Button>
-                <Button type="button" variant="outline" onClick={handleSaveDraft}>
-                  Save as Draft
-                </Button>
-                <Button type="button" onClick={handleSaveAndApprove}>
-                  Save & Approve
-                </Button>
-              </DialogFooter>
-            )}
-          </form>
+          {salesOrderEditorContent}
         </DialogContent>
       </Dialog>
 

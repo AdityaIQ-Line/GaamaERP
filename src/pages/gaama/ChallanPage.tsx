@@ -40,6 +40,8 @@ import type { Challan, ChallanItem, GRN } from "@/lib/gaama-types"
 import { FileText, Plus, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
 
 type Tab = "pending" | "delivery"
 type ModalMode = "create" | "edit" | "view" | null
@@ -234,31 +236,113 @@ export function ChallanPage() {
     )
   })
 
+  const cancelCreateChallan = () => {
+    if (!window.confirm("Discard changes?")) return
+    setMode(null)
+    setSelectedGrnIds(new Set())
+  }
+
+  const challanCreateForm = (
+    <div className="rounded-lg border border-border bg-card p-6">
+      <form onSubmit={handleGenerateChallan}>
+        <FormSection title="Selected GRNs" noSeparator>
+          <p className="text-sm text-muted-foreground py-2">{selectedGrnList.length} GRN(s) selected.</p>
+        </FormSection>
+        <FormSection title="Shipping & Dispatch" noSeparator>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Shipping Address *</Label>
+              {shippingOptions.length > 0 ? (
+                <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shippingOptions.map((addr, i) => (
+                      <SelectItem key={i} value={addr}>
+                        {addr.length > 60 ? addr.slice(0, 60) + "…" : addr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <Textarea
+                value={createShippingAddress}
+                onChange={(e) => setCreateShippingAddress(e.target.value)}
+                placeholder="Shipping address"
+                rows={2}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Dispatch Date</Label>
+                <Input type="date" value={createDispatchDate} onChange={(e) => setCreateDispatchDate(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Vehicle Details</Label>
+                <Input value={createVehicleDetails} onChange={(e) => setCreateVehicleDetails(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Driver Name</Label>
+                <Input value={createDriverName} onChange={(e) => setCreateDriverName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>Base Amount</Label>
+                <Input type="number" step="any" value={createBaseAmount} onChange={(e) => setCreateBaseAmount(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label>GST %</Label>
+                <Input type="number" value={createGstPercentage} onChange={(e) => setCreateGstPercentage(e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </FormSection>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" onClick={cancelCreateChallan}>
+            Cancel
+          </Button>
+          <Button type="submit">Generate Challan</Button>
+        </div>
+      </form>
+    </div>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Generate Challan" noBorder backButton={{ onClick: cancelCreateChallan }} />
+            <div className="space-y-4 px-6 py-4 h-full">
+            {challanCreateForm}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
-      <PageHeader title="Challan Management" />
-      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
-        {!allowed ? (
-          <p className="text-muted-foreground">You do not have permission to view this module.</p>
-        ) : (
-          <>
-            <div className="flex gap-2 border-b">
-              <Button
-                variant={tab === "pending" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setTab("pending")}
-              >
-                Pending ({pendingGrns.length})
-              </Button>
-              <Button
-                variant={tab === "delivery" ? "default" : "ghost"}
-                size="sm"
-                onClick={() => setTab("delivery")}
-              >
-                Delivery ({challans.length})
-              </Button>
-            </div>
-
+      {!allowed ? (
+        <>
+          <PageHeader title="Challan Management" />
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <p className="text-muted-foreground">You do not have permission to view this module.</p>
+          </div>
+        </>
+      ) : (
+        <>
+          <PageHeaderWithTabs
+            title="Challan Management"
+            tabs={[
+              { value: "pending", label: "Pending", badge: pendingGrns.length },
+              { value: "delivery", label: "Delivery", badge: challans.length },
+            ]}
+            value={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+          />
+          <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
             {tab === "pending" && (
               <>
                 {pendingGrns.length === 0 ? (
@@ -327,57 +411,7 @@ export function ChallanPage() {
 
             {tab === "delivery" && (
               <>
-                <div className="flex gap-4">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search challans"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      exportChallansToCsv(
-                        filteredChallans.map((c) => ({
-                          "Challan No": c.challan_number ?? c.challan_id,
-                          Customer: c.customer_name ?? "",
-                          "GRN Numbers": c.grn_numbers ?? "",
-                          "Dispatch Date": c.dispatch_date?.slice(0, 10) ?? "",
-                          Status: c.status ?? "",
-                          "Total Amount": c.total_amount ?? "",
-                        })),
-                        `challans-${new Date().toISOString().slice(0, 10)}.csv`
-                      )
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export CSV
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      exportChallansToPdf(
-                        filteredChallans.map((c) => ({
-                          "Challan No": c.challan_number ?? c.challan_id,
-                          Customer: c.customer_name ?? "",
-                          "GRN Numbers": c.grn_numbers ?? "",
-                          "Dispatch Date": c.dispatch_date?.slice(0, 10) ?? "",
-                          Status: c.status ?? "",
-                          "Total Amount": c.total_amount ?? "",
-                        }))
-                      )
-                    }
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Export PDF
-                  </Button>
-                </div>
-                {filteredChallans.length === 0 ? (
+                {challans.length === 0 ? (
                   <Empty>
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
@@ -388,114 +422,110 @@ export function ChallanPage() {
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Challan No</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>GRN Numbers</TableHead>
-                          <TableHead>Dispatch Date</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredChallans.map((c) => (
-                          <TableRow key={c.challan_id}>
-                            <TableCell className="font-medium">{c.challan_number ?? c.challan_id}</TableCell>
-                            <TableCell>{c.customer_name ?? "—"}</TableCell>
-                            <TableCell className="max-w-[200px] truncate">{c.grn_numbers ?? "—"}</TableCell>
-                            <TableCell>{c.dispatch_date?.slice(0, 10) ?? "—"}</TableCell>
-                            <TableCell><Badge variant="secondary">{c.status ?? "—"}</Badge></TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search challans"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                      {filteredChallans.length > 0 && (
+                        <>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              exportChallansToCsv(
+                                filteredChallans.map((c) => ({
+                                  "Challan No": c.challan_number ?? c.challan_id,
+                                  Customer: c.customer_name ?? "",
+                                  "GRN Numbers": c.grn_numbers ?? "",
+                                  "Dispatch Date": c.dispatch_date?.slice(0, 10) ?? "",
+                                  Status: c.status ?? "",
+                                  "Total Amount": c.total_amount ?? "",
+                                })),
+                                `challans-${new Date().toISOString().slice(0, 10)}.csv`
+                              )
+                            }
+                          >
+                            <Download className="h-4 w-4 mr-2" />
+                            Export CSV
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              exportChallansToPdf(
+                                filteredChallans.map((c) => ({
+                                  "Challan No": c.challan_number ?? c.challan_id,
+                                  Customer: c.customer_name ?? "",
+                                  "GRN Numbers": c.grn_numbers ?? "",
+                                  "Dispatch Date": c.dispatch_date?.slice(0, 10) ?? "",
+                                  Status: c.status ?? "",
+                                  "Total Amount": c.total_amount ?? "",
+                                }))
+                              )
+                            }
+                          >
+                            <Printer className="h-4 w-4 mr-2" />
+                            Export PDF
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                    {filteredChallans.length === 0 ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <FileText className="size-4" />
+                          </EmptyMedia>
+                          <EmptyTitle>No matching challans</EmptyTitle>
+                          <EmptyDescription>Try a different search term.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Challan No</TableHead>
+                              <TableHead>Customer</TableHead>
+                              <TableHead>GRN Numbers</TableHead>
+                              <TableHead>Dispatch Date</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredChallans.map((c) => (
+                              <TableRow key={c.challan_id}>
+                                <TableCell className="font-medium">{c.challan_number ?? c.challan_id}</TableCell>
+                                <TableCell>{c.customer_name ?? "—"}</TableCell>
+                                <TableCell className="max-w-[200px] truncate">{c.grn_numbers ?? "—"}</TableCell>
+                                <TableCell>{c.dispatch_date?.slice(0, 10) ?? "—"}</TableCell>
+                                <TableCell><Badge variant="secondary">{c.status ?? "—"}</Badge></TableCell>
+                                <TableCell className="text-right">
+                                  <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
-      </div>
-
-      <Dialog open={mode === "create"} onOpenChange={(open) => !open && (setMode(null), setSelectedGrnIds(new Set()))}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Generate Challan</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleGenerateChallan}>
-            <FormSection title="Selected GRNs" noSeparator>
-              <p className="text-sm text-muted-foreground">
-                {selectedGrnList.length} GRN(s) selected.
-              </p>
-            </FormSection>
-            <FormSection title="Shipping & Dispatch" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Shipping Address *</Label>
-                  {shippingOptions.length > 0 ? (
-                    <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select address" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {shippingOptions.map((addr, i) => (
-                          <SelectItem key={i} value={addr}>
-                            {addr.length > 60 ? addr.slice(0, 60) + "…" : addr}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : null}
-                  <Textarea
-                    value={createShippingAddress}
-                    onChange={(e) => setCreateShippingAddress(e.target.value)}
-                    placeholder="Shipping address"
-                    rows={2}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Dispatch Date</Label>
-                    <Input
-                      type="date"
-                      value={createDispatchDate}
-                      onChange={(e) => setCreateDispatchDate(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Vehicle Details</Label>
-                    <Input value={createVehicleDetails} onChange={(e) => setCreateVehicleDetails(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Driver Name</Label>
-                    <Input value={createDriverName} onChange={(e) => setCreateDriverName(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Base Amount</Label>
-                    <Input type="number" step="any" value={createBaseAmount} onChange={(e) => setCreateBaseAmount(e.target.value)} />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>GST %</Label>
-                    <Input type="number" value={createGstPercentage} onChange={(e) => setCreateGstPercentage(e.target.value)} />
-                  </div>
-                </div>
-              </div>
-            </FormSection>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-              <Button type="submit">Generate Challan</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </>
+      )}
 
       <Dialog open={mode === "view" || mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">

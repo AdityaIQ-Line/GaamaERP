@@ -84,6 +84,19 @@ Layout with a fixed or collapsible sidebar.
 - Dashboard interfaces
 - Admin panels
 
+## IQLine / Gaama page body (inside AppShell)
+
+Routes rendered under **`AppShell`** use **`PageShell`** (`flex h-full flex-col`) as the per-page wrapper: **page header first**, then a **single scrollable body** with **`flex-1 overflow-auto`**.
+
+- **Page background:** Use the **default** main/content background (**no** **`bg-muted`** on that scroll column). This matches **IQLDS list pages** and full-page create flows alike; contrast comes from **`PageHeader`** and **cards/tables**. See **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md) §3.1** and **[Pattern 07](./patterns/07-page-composition.md)**.
+- **List / index:** Body is usually **`flex-1 overflow-auto px-6 py-4 space-y-4`** (see Gaama pages under `src/pages/gaama/`).
+- **Full-page create / generate:** Follow **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md) §3.3** — outer scroll **`flex-1 overflow-auto`**, inner **`w-full h-full`**, then **`PageHeaderWithBack`** and **`space-y-4 px-6 py-4 h-full`** around cards/forms.
+
+```tsx
+// List-style body (default surface — no bg-muted on this div)
+<div className="flex-1 overflow-auto px-6 py-4 space-y-4">{/* … */}</div>
+```
+
 ## Responsive Breakpoints
 
 The application uses Tailwind's default breakpoints:

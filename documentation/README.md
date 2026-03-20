@@ -22,9 +22,10 @@ Complete documentation for the IQLine Design System - a production-ready compone
 - **[Custom Components](./creating-components.md)** - Building new components
 
 ### Layouts & Pages
-- **[Page Layouts](./page-layouts.md)** - Layout patterns and templates
+- **[Page Layouts](./page-layouts.md)** - Layout patterns and templates (includes **IQLine / Gaama page body** — default page surface, list vs create structure)
 - **[Page Templates](./page-templates.md)** - Pre-built page templates
-- **[Creating Pages](./creating-pages.md)** - Step-by-step page creation
+- **[Creating Pages](./creating-pages.md)** - Step-by-step page creation (Gaama list + create flow pointers)
+- **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md)** - Gaama add/create/generate screens; **§3.1** page background aligns with **IQLDS** (no full-column `bg-muted`)
 
 ### Navigation
 - **[Navigation Patterns](./navigation.md)** - Navigation best practices

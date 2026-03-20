@@ -211,7 +211,7 @@ export function UsersPage() {
         title="Users"
         actions={<Button>Add</Button>}  {/* Layer 5: UI */}
       />
-      <div className="flex-1 p-6">
+      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
         <DataTable                   {/* Layer 4: Block */}
           data={users}
           columns={columns}

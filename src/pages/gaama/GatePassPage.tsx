@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +37,7 @@ import type { GatePass } from "@/lib/gaama-types"
 import { Truck, Search, Printer, Eye, FileOutput } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 
 type ModalMode = "view" | "generate" | null
 
@@ -114,6 +114,50 @@ export function GatePassPage() {
   }
 
   const viewGatePass = viewId ? data.getGatePass(viewId) : null
+
+  const cancelGenerateGatePass = () => {
+    if (!window.confirm("Discard changes?")) return
+    setMode(null)
+    setGenerateId(null)
+  }
+
+  const gatePassGenerateForm = (
+    <div className="rounded-lg border border-border bg-card p-6 max-w-lg">
+      <form onSubmit={handleGenerateSubmit}>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>Gate Pass Number</Label>
+            <Input value={generateNumber} onChange={(e) => setGenerateNumber(e.target.value)} placeholder="e.g. GP-2025-001" />
+          </div>
+          <div className="space-y-2">
+            <Label>Gate Pass Date</Label>
+            <Input type="date" value={generateDate} onChange={(e) => setGenerateDate(e.target.value)} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" onClick={cancelGenerateGatePass}>
+            Cancel
+          </Button>
+          <Button type="submit">Generate</Button>
+        </div>
+      </form>
+    </div>
+  )
+
+  if (allowed && mode === "generate" && generateId) {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Generate Gate Pass" noBorder backButton={{ onClick: cancelGenerateGatePass }} />
+            <div className="space-y-4 px-6 py-4 h-full">
+            {gatePassGenerateForm}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
 
   return (
     <PageShell>
@@ -245,29 +289,6 @@ export function GatePassPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={mode === "generate" && generateId !== null} onOpenChange={(open) => !open && (setMode(null), setGenerateId(null))}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Generate Gate Pass</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleGenerateSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Gate Pass Number</Label>
-                <Input value={generateNumber} onChange={(e) => setGenerateNumber(e.target.value)} placeholder="e.g. GP-2025-001" />
-              </div>
-              <div className="space-y-2">
-                <Label>Gate Pass Date</Label>
-                <Input type="date" value={generateDate} onChange={(e) => setGenerateDate(e.target.value)} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-              <Button type="submit">Generate</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   )
 }

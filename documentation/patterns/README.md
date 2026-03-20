@@ -28,4 +28,4 @@ new pages. Follow these patterns exactly — do not invent alternatives.
 - **Page Header** — every page **must** have a `PageHeader`, `PageHeaderWithBack`, or `PageHeaderWithTabs`; it is never optional.
 - **Breadcrumbs** — generated automatically from the URL; override only when the default label is wrong.
 - **Footer** — the global footer is always visible; swap it for a `PageFooter` only when a page needs sticky CTAs.
-- **Page Composition** — the correct order is always: `PageShell` → page header → scrollable content area → optional page footer.
+- **Page Composition** — the correct order is always: `PageShell` → page header → scrollable content area (`flex-1 overflow-auto`) → optional page footer. **Do not** tint the whole scroll column `bg-muted` — same default page surface as IQLDS lists; see **Pattern 07** and **CREATE_PAGES_DESIGN_INTENT §3.1**.

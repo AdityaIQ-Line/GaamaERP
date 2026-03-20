@@ -156,10 +156,10 @@ src/
 
 | Document | Description |
 |----------|-------------|
-| `docs/components.md` | Component usage guide |
-| `docs/design-system.md` | Design tokens and styling |
-| `docs/creating-pages.md` | How to create new pages |
-| `docs/page-layouts.md` | Layout patterns and examples |
+| `documentation/components.md` | Component usage guide |
+| `documentation/design-system.md` | Design tokens and styling |
+| `documentation/creating-pages.md` | How to create new pages |
+| `documentation/page-layouts.md` | Layout patterns and examples |
 
 ## Creating a New Page
 
@@ -174,7 +174,8 @@ export function MyPage() {
   return (
     <PageShell>
       <PageHeader title="My Page" />
-      <div className="flex-1 overflow-auto p-6">
+      {/* Default page surface — no bg-muted on this wrapper (IQLDS / CREATE_PAGES §3.1) */}
+      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
         {/* Your content here */}
       </div>
     </PageShell>

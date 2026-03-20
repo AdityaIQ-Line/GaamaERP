@@ -84,6 +84,8 @@ Place it as the **last child** inside `PageShell`:
 `PageShell` is `flex flex-col h-full`. The content area has `flex-1 overflow-auto`.
 This makes the page footer stick to the bottom of the viewport regardless of content length.
 
+**Page surface:** Keep the scrollable body on the **default** app background (**no** full-column **`bg-muted`** tint), consistent with **IQLDS** list pages — see **CREATE_PAGES_DESIGN_INTENT §3.1** and **Pattern 07**.
+
 ---
 
 ## When to use each footer

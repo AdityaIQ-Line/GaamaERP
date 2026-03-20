@@ -77,6 +77,32 @@ export function DetailPage() {
 }
 ```
 
+### Full-page create / generate header (Gaama ERP)
+
+For full-screen **add / create / generate** flows inside `PageShell`, follow **[CREATE_PAGES_DESIGN_INTENT.md](./CREATE_PAGES_DESIGN_INTENT.md) §3.2–§3.3**: prefer **`PageHeaderWithBack`** (same **IQLDS** title + **`BackButton`** as Pattern 04), with header and form/cards in the **full content width** and the **same horizontal padding** (`px-6`) from header through fields.
+
+**Page background:** The scrollable column should stay on the **same default surface as list views** — **do not** add **`bg-muted`** / **`bg-muted/40`** to the full-page content area (**CREATE_PAGES_DESIGN_INTENT** §3.1).
+
+```tsx
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { PageShell } from "@/components/layouts/page-shell"
+
+// Header-only usage:
+<PageHeaderWithBack title="Add Customer" backButton={{ onClick: handleCancel }} noBorder />
+
+// Full shell (structure matches Gaama create pages — scroll wrapper has no muted tint):
+<PageShell>
+  <div className="flex-1 overflow-auto">
+    <div className="w-full h-full">
+      <PageHeaderWithBack title="Add Customer" backButton={{ onClick: handleCancel }} noBorder />
+      <div className="space-y-4 px-6 py-4 h-full">{/* cards / form */}</div>
+    </div>
+  </div>
+</PageShell>
+```
+
+**`FullPageHeader`** is **legacy**; refactor to **`PageHeaderWithBack`** when touching those screens. See Customer Master, Category Master, GRN create, etc.
+
 ### When to Use Back Button
 
 ✅ **Use back button when:**

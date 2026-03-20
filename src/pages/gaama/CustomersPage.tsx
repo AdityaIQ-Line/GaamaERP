@@ -10,13 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,7 +17,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Customer, ShippingAddress } from "@/lib/gaama-types"
-import { Plus, Users, ArrowLeft, Mail, Phone, Search, Eye, Pencil, Download, MapPin, FileText, Info, Trash2 } from "lucide-react"
+import { Plus, Users, Mail, Phone, Search, Eye, Pencil, Download, MapPin, FileText, Info, Trash2 } from "lucide-react"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import {
@@ -77,7 +71,7 @@ const INDIAN_STATES = [
   "West Bengal",
 ]
 
-type ModalMode = "create" | "edit" | "view" | null
+type ModalMode = "view" | null
 
 interface ShippingAddressForm {
   id: string
@@ -97,17 +91,6 @@ const defaultShippingAddress = (id: string): ShippingAddressForm => ({
   country: "India",
 })
 
-const defaultForm: Omit<Customer, "customer_id" | "created_at" | "updated_at"> = {
-  customer_name: "",
-  company_name: "",
-  email: "",
-  phone: "",
-  billing_address: "",
-  shipping_addresses: [],
-  gst_number: "",
-  status: "active",
-}
-
 function generateCustomerCode(customers: Customer[]): string {
   const next = (customers.length + 1).toString().padStart(3, "0")
   return `CUS${next}`
@@ -117,8 +100,6 @@ export function CustomersPage() {
   const data = useData()
   const [mode, setMode] = React.useState<ModalMode>(null)
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
-  const [form, setForm] = React.useState(defaultForm)
-
   // Multi-step Add Customer state
   const [showAddForm, setShowAddForm] = React.useState(false)
   const [currentStep, setCurrentStep] = React.useState(1)
@@ -126,7 +107,6 @@ export function CustomersPage() {
   const [customerName, setCustomerName] = React.useState("")
   const [customerType, setCustomerType] = React.useState("")
   const [email, setEmail] = React.useState("")
-  const [phoneNumber, setPhoneNumber] = React.useState("")
   const [mobileNumber, setMobileNumber] = React.useState("")
   const [alternateMobileNumber, setAlternateMobileNumber] = React.useState("")
   const [website, setWebsite] = React.useState("")
@@ -153,6 +133,10 @@ export function CustomersPage() {
   const [accountNumber, setAccountNumber] = React.useState("")
   const [ifsc, setIfsc] = React.useState("")
   const [kycDocument, setKycDocument] = React.useState("")
+  const [tradeLicenseNumber, setTradeLicenseNumber] = React.useState("")
+  const [iecCode, setIecCode] = React.useState("")
+  const [msmeRegistration, setMsmeRegistration] = React.useState("")
+  const [supportingDocuments, setSupportingDocuments] = React.useState("")
   const [searchTerm, setSearchTerm] = React.useState("")
   const [showEditForm, setShowEditForm] = React.useState(false)
   const [editId, setEditId] = React.useState<string | null>(null)
@@ -173,7 +157,6 @@ export function CustomersPage() {
     setCustomerName("")
     setCustomerType("")
     setEmail("")
-    setPhoneNumber("")
     setMobileNumber("")
     setAlternateMobileNumber("")
     setWebsite("")
@@ -198,6 +181,10 @@ export function CustomersPage() {
     setAccountNumber("")
     setIfsc("")
     setKycDocument("")
+    setTradeLicenseNumber("")
+    setIecCode("")
+    setMsmeRegistration("")
+    setSupportingDocuments("")
     setCurrentStep(1)
     setShowAddForm(true)
   }
@@ -288,6 +275,10 @@ export function CustomersPage() {
         state,
         pincode,
         kyc_document: kycDocument || "N/A",
+        trade_license_number: tradeLicenseNumber || undefined,
+        iec_code: iecCode || undefined,
+        msme_registration: msmeRegistration || undefined,
+        supporting_documents: supportingDocuments || undefined,
         gst_registration_type: gstRegistrationType || undefined,
         state_code: stateCode || undefined,
         tax_filing_frequency: taxFilingFrequency || undefined,
@@ -318,6 +309,7 @@ export function CustomersPage() {
   }
 
   const handleCancelAdd = () => {
+    if (!window.confirm("Discard changes?")) return
     setShowAddForm(false)
     setCurrentStep(1)
   }
@@ -327,7 +319,6 @@ export function CustomersPage() {
     setCustomerName(c.customer_name)
     setCustomerType(c.customer_type ?? "")
     setEmail(c.email)
-    setPhoneNumber(c.phone)
     setMobileNumber(c.phone)
     setAlternateMobileNumber("")
     setWebsite(c.website ?? "")
@@ -366,12 +357,17 @@ export function CustomersPage() {
     setAccountNumber(c.account_number ?? "")
     setIfsc(c.ifsc ?? "")
     setKycDocument(c.kyc_document ?? "")
+    setTradeLicenseNumber(c.trade_license_number ?? "")
+    setIecCode(c.iec_code ?? "")
+    setMsmeRegistration(c.msme_registration ?? "")
+    setSupportingDocuments(c.supporting_documents ?? "")
     setCurrentStep(1)
     setEditId(c.customer_id)
     setShowEditForm(true)
   }
 
   const handleCancelEdit = () => {
+    if (!window.confirm("Discard changes?")) return
     setShowEditForm(false)
     setEditId(null)
   }
@@ -407,6 +403,19 @@ export function CustomersPage() {
       state,
       pincode,
       kyc_document: kycDocument || "N/A",
+      trade_license_number: tradeLicenseNumber || undefined,
+      iec_code: iecCode || undefined,
+      msme_registration: msmeRegistration || undefined,
+      supporting_documents: supportingDocuments || undefined,
+      gst_registration_type: gstRegistrationType || undefined,
+      state_code: stateCode || undefined,
+      tax_filing_frequency: taxFilingFrequency || undefined,
+      payment_terms: paymentTerms || undefined,
+      credit_limit: creditLimit || undefined,
+      opening_balance: openingBalance || undefined,
+      bank_name: bankName || undefined,
+      account_number: accountNumber || undefined,
+      ifsc: ifsc || undefined,
     })
     setShowEditForm(false)
     setEditId(null)
@@ -426,29 +435,8 @@ export function CustomersPage() {
   }
 
   const openView = (c: Customer) => {
-    setForm({
-      customer_name: c.customer_name,
-      company_name: c.company_name ?? "",
-      email: c.email,
-      phone: c.phone,
-      billing_address: c.billing_address,
-      shipping_addresses: c.shipping_addresses ?? [],
-      gst_number: c.gst_number,
-      status: c.status,
-    })
     setSelectedId(c.customer_id)
     setMode("view")
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (mode === "create") {
-      data.addCustomer(form)
-      setMode(null)
-    } else if (mode === "edit" && selectedId) {
-      data.updateCustomer(selectedId, form)
-      setMode(null)
-    }
   }
 
   const filteredCustomers = customers.filter((c) => {
@@ -484,19 +472,10 @@ export function CustomersPage() {
     ]
     return (
       <PageShell>
-        <div className="flex-1 overflow-auto p-6 space-y-6">
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={handleCancelEdit}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <span className="font-medium">Edit Customer</span>
-          </div>
-
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Edit Customer" noBorder backButton={{ onClick: handleCancelEdit }} />
+            <div className="space-y-4 px-6 py-4 h-full">
           {/* Stepper */}
           <div className="flex items-center gap-0">
             {stepsEdit.map((step, index) => (
@@ -730,6 +709,8 @@ export function CustomersPage() {
               )}
             </div>
           </div>
+            </div>
+          </div>
         </div>
       </PageShell>
     )
@@ -745,20 +726,11 @@ export function CustomersPage() {
     ]
     return (
       <PageShell>
-        <div className="flex-1 overflow-auto p-6 space-y-6">
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={handleCancelAdd}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <span className="font-medium">Add Customer</span>
-          </div>
-
-          <div className="bg-card rounded-lg border p-6">
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Add Customer" noBorder backButton={{ onClick: handleCancelAdd }} />
+            <div className="space-y-4 px-6 py-4 h-full">
+          <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 shadow-sm">
             <div className="flex items-center justify-between mb-8">
               {steps.map((step, index) => (
                 <React.Fragment key={step.num}>
@@ -847,18 +819,6 @@ export function CustomersPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label>Phone (Optional)</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <Input
-                        value={phoneNumber}
-                        onChange={(e) => setPhoneNumber(e.target.value)}
-                        placeholder="Phone"
-                        className="pl-9"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
                     <Label>Mobile Number *</Label>
                     <div className="relative">
                       <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -923,60 +883,64 @@ export function CustomersPage() {
             {currentStep === 2 && (
               <div className="space-y-6">
                 <h2 className="text-lg font-semibold">Address Details</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label>Billing Address *</Label>
                     <Textarea
                       value={billingAddress}
                       onChange={(e) => setBillingAddress(e.target.value)}
                       placeholder="Billing address"
-                      className="min-h-[80px]"
+                      className="min-h-[96px]"
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label>State *</Label>
-                    <Select value={state} onValueChange={setState}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select State" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {INDIAN_STATES.map((s) => (
-                          <SelectItem key={s} value={s}>
-                            {s}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>State *</Label>
+                      <Select value={state} onValueChange={setState}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select State" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INDIAN_STATES.map((s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Country *</Label>
+                      <Select value={country} onValueChange={setCountry}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="India">India</SelectItem>
+                          <SelectItem value="USA">USA</SelectItem>
+                          <SelectItem value="UK">UK</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label>City *</Label>
-                    <Input
-                      value={city}
-                      onChange={(e) => setCity(e.target.value)}
-                      placeholder="City"
-                      disabled={!state}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Pincode *</Label>
-                    <Input
-                      value={pincode}
-                      onChange={(e) => setPincode(e.target.value)}
-                      placeholder="Pincode"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Country *</Label>
-                    <Select value={country} onValueChange={setCountry}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="India">India</SelectItem>
-                        <SelectItem value="USA">USA</SelectItem>
-                        <SelectItem value="UK">UK</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>City *</Label>
+                      <Input
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        placeholder="City"
+                        disabled={!state}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Pincode *</Label>
+                      <Input
+                        value={pincode}
+                        onChange={(e) => setPincode(e.target.value)}
+                        placeholder="Pincode"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="border-t pt-6">
@@ -1004,8 +968,8 @@ export function CustomersPage() {
                             </Button>
                           )}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          <div className="space-y-2 md:col-span-2">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div className="space-y-2">
                             <Label>Address *</Label>
                             <Textarea
                               value={addr.address}
@@ -1013,7 +977,7 @@ export function CustomersPage() {
                                 handleShippingAddressChange(addr.id, "address", e.target.value)
                               }
                               placeholder="Shipping address"
-                              className="min-h-[60px]"
+                              className="min-h-[96px]"
                             />
                           </div>
                           <div className="space-y-2">
@@ -1067,28 +1031,12 @@ export function CustomersPage() {
             {currentStep === 3 && (
               <div className="space-y-6">
                 <h2 className="text-lg font-semibold">Taxation, Legal & Financial Details</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <Label>GST Number</Label>
-                    <Input
-                      value={gstNumber}
-                      onChange={(e) => setGstNumber(e.target.value)}
-                      placeholder="GST number"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>PAN Number</Label>
-                    <Input
-                      value={panNumber}
-                      onChange={(e) => setPanNumber(e.target.value)}
-                      placeholder="PAN number"
-                    />
-                  </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="space-y-2">
                     <Label>GST Registration Type</Label>
                     <Select value={gstRegistrationType} onValueChange={setGstRegistrationType}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select" />
+                        <SelectValue placeholder="Select type" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Regular">Regular</SelectItem>
@@ -1099,18 +1047,34 @@ export function CustomersPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
+                    <Label>GST Number</Label>
+                    <Input
+                      value={gstNumber}
+                      onChange={(e) => setGstNumber(e.target.value)}
+                      placeholder="Enter GST number"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <Label>State Code</Label>
                     <Input
                       value={stateCode}
                       onChange={(e) => setStateCode(e.target.value)}
-                      placeholder="e.g. 09"
+                      placeholder="Enter state code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>PAN Number</Label>
+                    <Input
+                      value={panNumber}
+                      onChange={(e) => setPanNumber(e.target.value)}
+                      placeholder="Enter PAN number"
                     />
                   </div>
                   <div className="space-y-2">
                     <Label>Tax Filing Frequency</Label>
                     <Select value={taxFilingFrequency} onValueChange={setTaxFilingFrequency}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select" />
+                        <SelectValue placeholder="Select frequency" />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="Monthly">Monthly</SelectItem>
@@ -1121,18 +1085,25 @@ export function CustomersPage() {
                   </div>
                   <div className="space-y-2">
                     <Label>Payment Terms</Label>
-                    <Input
-                      value={paymentTerms}
-                      onChange={(e) => setPaymentTerms(e.target.value)}
-                      placeholder="e.g. Net 30 Days"
-                    />
+                    <Select value={paymentTerms} onValueChange={setPaymentTerms}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select terms" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Immediate">Immediate</SelectItem>
+                        <SelectItem value="Net 15 Days">Net 15 Days</SelectItem>
+                        <SelectItem value="Net 30 Days">Net 30 Days</SelectItem>
+                        <SelectItem value="Net 45 Days">Net 45 Days</SelectItem>
+                        <SelectItem value="Net 60 Days">Net 60 Days</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Credit Limit</Label>
                     <Input
                       value={creditLimit}
                       onChange={(e) => setCreditLimit(e.target.value)}
-                      placeholder="Amount"
+                      placeholder="Enter credit limit"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1140,7 +1111,7 @@ export function CustomersPage() {
                     <Input
                       value={openingBalance}
                       onChange={(e) => setOpeningBalance(e.target.value)}
-                      placeholder="Amount"
+                      placeholder="Enter opening balance"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1148,7 +1119,7 @@ export function CustomersPage() {
                     <Input
                       value={bankName}
                       onChange={(e) => setBankName(e.target.value)}
-                      placeholder="Bank name"
+                      placeholder="Enter bank name"
                     />
                   </div>
                   <div className="space-y-2">
@@ -1156,23 +1127,15 @@ export function CustomersPage() {
                     <Input
                       value={accountNumber}
                       onChange={(e) => setAccountNumber(e.target.value)}
-                      placeholder="Account number"
+                      placeholder="Enter account number"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>IFSC</Label>
+                    <Label>IFSC Code</Label>
                     <Input
                       value={ifsc}
                       onChange={(e) => setIfsc(e.target.value)}
-                      placeholder="IFSC code"
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label>KYC Document</Label>
-                    <Input
-                      value={kycDocument}
-                      onChange={(e) => setKycDocument(e.target.value)}
-                      placeholder="KYC document or file name"
+                      placeholder="Enter IFSC code"
                     />
                   </div>
                 </div>
@@ -1182,24 +1145,68 @@ export function CustomersPage() {
             {currentStep === 4 && (
               <div className="space-y-6">
                 <h2 className="text-lg font-semibold">Compliance & Documentation</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label>KYC Document</Label>
+                    <Input
+                      value={kycDocument}
+                      onChange={(e) => setKycDocument(e.target.value)}
+                      placeholder="Document reference"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Trade License Number</Label>
+                    <Input
+                      value={tradeLicenseNumber}
+                      onChange={(e) => setTradeLicenseNumber(e.target.value)}
+                      placeholder="Enter trade license number"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>IEC Code</Label>
+                    <Input
+                      value={iecCode}
+                      onChange={(e) => setIecCode(e.target.value)}
+                      placeholder="Enter IEC code"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>MSME Registration</Label>
+                    <Input
+                      value={msmeRegistration}
+                      onChange={(e) => setMsmeRegistration(e.target.value)}
+                      placeholder="Enter MSME registration"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Supporting Documents</Label>
+                    <Input
+                      value={supportingDocuments}
+                      onChange={(e) => setSupportingDocuments(e.target.value)}
+                      placeholder="Attach supporting documents"
+                    />
+                  </div>
+                </div>
                 <div className="border-t pt-6">
-                  <h3 className="font-semibold mb-4">Customer Summary</h3>
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-muted-foreground">Customer Name</p>
-                      <p className="font-medium">{customerName || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Email</p>
-                      <p className="font-medium">{email || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Mobile</p>
-                      <p className="font-medium">{mobileNumber || "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-muted-foreground">Shipping Addresses</p>
-                      <p className="font-medium">{shippingAddresses.length}</p>
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">Customer Summary</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-4 text-sm">
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Customer Name:</p>
+                        <p className="font-medium">{customerName || "—"}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Email:</p>
+                        <p className="font-medium">{email || "—"}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Mobile:</p>
+                        <p className="font-medium">{mobileNumber || "—"}</p>
+                      </div>
+                      <div className="space-y-0.5">
+                        <p className="text-muted-foreground">Total Shipping Addresses:</p>
+                        <p className="font-medium">{shippingAddresses.length}</p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1207,21 +1214,23 @@ export function CustomersPage() {
             )}
 
             <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCancelAdd}
+              >
+                Cancel
+              </Button>
               {currentStep > 1 && (
                 <Button type="button" variant="outline" onClick={handlePrevious}>
                   Previous
                 </Button>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={isEdit ? handleCancelEdit : handleCancelAdd}
-              >
-                Cancel
-              </Button>
               <Button onClick={handleNext}>
                 {currentStep === 4 ? "Save" : "Next"}
               </Button>
+            </div>
+          </div>
             </div>
           </div>
         </div>
@@ -1255,23 +1264,19 @@ export function CustomersPage() {
 
     return (
       <PageShell>
-        <div className="flex-1 overflow-auto p-6 space-y-6">
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={() => {
-                setMode(null)
-                setSelectedId(null)
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title="Customer Details"
+              noBorder
+              backButton={{
+                onClick: () => {
+                  setMode(null)
+                  setSelectedId(null)
+                },
               }}
-              className="text-muted-foreground hover:text-foreground"
-              aria-label="Back"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <span className="font-medium">Customer Details</span>
-          </div>
-
-          <div className="space-y-6 max-w-4xl">
+            />
+            <div className="space-y-6 w-full px-6">
             {/* Basic Information */}
             <div className="rounded-lg border border-border bg-card p-6">
               <div className="flex items-center gap-2 mb-6">
@@ -1399,6 +1404,7 @@ export function CustomersPage() {
                 <p className="text-sm text-muted-foreground">Created At</p>
                 <p className="font-medium">{createdDate}</p>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1549,93 +1555,6 @@ export function CustomersPage() {
         )}
       </div>
 
-      <Dialog open={mode === "create" || mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              {mode === "create" ? "Add Customer" : "Edit Customer"}
-            </DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleSubmit}>
-            <FormSection title="Basic info" noSeparator>
-              <div className="space-y-4 py-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Customer Name</Label>
-                    <Input
-                      value={form.customer_name}
-                      onChange={(e) => setForm((f) => ({ ...f, customer_name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Company Name</Label>
-                    <Input
-                      value={form.company_name}
-                      onChange={(e) => setForm((f) => ({ ...f, company_name: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Email</Label>
-                    <Input
-                      type="email"
-                      value={form.email}
-                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Phone</Label>
-                    <Input
-                      value={form.phone}
-                      onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Billing Address</Label>
-                  <Input
-                    value={form.billing_address}
-                    onChange={(e) => setForm((f) => ({ ...f, billing_address: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>GST Number</Label>
-                  <Input
-                    value={form.gst_number}
-                    onChange={(e) => setForm((f) => ({ ...f, gst_number: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={form.status}
-                    onValueChange={(v: "active" | "inactive") =>
-                      setForm((f) => ({ ...f, status: v }))
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="inactive">Inactive</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </FormSection>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMode(null)}>
-                Cancel
-              </Button>
-              <Button type="submit">
-                {mode === "create" ? "Create" : "Save"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   )
 }

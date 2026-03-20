@@ -30,7 +30,8 @@ import {
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Category, SubCategory } from "@/lib/gaama-types"
-import { Plus, FolderTree, ArrowLeft, Trash2, Search, LayoutGrid, List, Eye, Pencil } from "lucide-react"
+import { Plus, FolderTree, Trash2, Search, LayoutGrid, List, Eye, Pencil } from "lucide-react"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import {
   Select,
   SelectContent,
@@ -138,16 +139,16 @@ export function CategoriesPage() {
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault()
     if (!formCategoryName.trim()) {
-      alert("Category Name is required.")
+      toast.error("Category Name is required.")
       return
     }
     const doseNum = Number(formDoseCount)
     if (!formDoseCount || isNaN(doseNum) || doseNum < 0) {
-      alert("Dose Count is required and must be a valid number.")
+      toast.error("Dose Count is required and must be a valid number.")
       return
     }
     if (!formDoseUnit) {
-      alert("Dose Unit is required.")
+      toast.error("Dose Unit is required.")
       return
     }
 
@@ -185,6 +186,7 @@ export function CategoriesPage() {
   }
 
   const handleCancelForm = () => {
+    if (!window.confirm("Discard changes?")) return
     setShowForm(false)
     setSelectedId(null)
   }
@@ -208,27 +210,19 @@ export function CategoriesPage() {
   if (showForm && allowed) {
     return (
       <PageShell>
-        <div className="flex-1 overflow-auto p-6 space-y-6">
-          <div className="flex items-center gap-2 text-sm">
-            <button
-              type="button"
-              onClick={handleCancelForm}
-              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Product Category
-            </button>
-            <span className="text-muted-foreground">/</span>
-            <span className="font-medium">
-              {selectedId ? "Edit Product Category" : "Add Product Category"}
-            </span>
-          </div>
-
-          <div className="bg-card rounded-lg border p-6">
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title={selectedId ? "Edit Product Category" : "Add Product Category"}
+              noBorder
+              backButton={{ onClick: handleCancelForm }}
+            />
+            <div className="space-y-4 px-6 py-4 h-full">
+          <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 shadow-sm">
             <form onSubmit={handleSaveForm}>
-              <FormSection title="Category Details" noSeparator>
+              <FormSection title="Category Details" className="[&>div]:h-fit">
                 <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid h-fit grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="space-y-2">
                       <Label>Category Name *</Label>
                       <Input
@@ -293,13 +287,13 @@ export function CategoriesPage() {
                 </div>
               </FormSection>
 
-              <FormSection title="Subcategories" noSeparator>
+              <FormSection title="Products">
                 <div className="space-y-4 py-4">
                   <div className="flex gap-2">
                     <Input
                       value={newSubName}
                       onChange={(e) => setNewSubName(e.target.value)}
-                      placeholder="Subcategory name"
+                      placeholder="Product name"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault()
@@ -313,7 +307,7 @@ export function CategoriesPage() {
                       onClick={handleAddSubcategory}
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Add subcategory
+                      Add product
                     </Button>
                   </div>
                   {subcategories.length > 0 && (
@@ -340,7 +334,7 @@ export function CategoriesPage() {
                 </div>
               </FormSection>
 
-              <div className="flex items-center justify-end gap-3 pt-6 border-t">
+              <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t">
                 <Button type="button" variant="outline" onClick={handleCancelForm}>
                   Cancel
                 </Button>
@@ -349,6 +343,8 @@ export function CategoriesPage() {
                 </Button>
               </div>
             </form>
+          </div>
+            </div>
           </div>
         </div>
       </PageShell>
@@ -385,7 +381,7 @@ export function CategoriesPage() {
                   className="pl-9"
                 />
               </div>
-              <div className="flex rounded-md border p-1">
+              <div className="ml-auto flex rounded-md border p-1">
                 <Button
                   variant={viewMode === "table" ? "secondary" : "ghost"}
                   size="sm"

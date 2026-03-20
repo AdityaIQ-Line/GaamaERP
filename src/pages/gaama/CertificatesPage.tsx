@@ -15,7 +15,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
@@ -32,6 +31,8 @@ import type { Certificate, CertificateProductRow, GRN } from "@/lib/gaama-types"
 import { Plus, Award, Search, Printer, Download, Eye } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
 
 type Tab = "pending" | "certificate"
 type ModalMode = "create" | "view" | null
@@ -207,23 +208,177 @@ export function CertificatesPage() {
 
   const viewCert = viewId ? data.getCertificate(viewId) : null
 
+  const cancelCreateCertificate = () => {
+    if (!window.confirm("Discard changes?")) return
+    setMode(null)
+  }
+
+  const certificateCreateForm = (
+    <div className="rounded-lg border border-border bg-card p-6 max-w-4xl">
+      <form onSubmit={handleGenerateSubmit}>
+        <FormSection title="Product rows" noSeparator>
+          <div className="space-y-4 py-4">
+            {certProductRows.map((row, idx) => (
+              <div key={idx} className="grid grid-cols-4 gap-2">
+                <Input
+                  placeholder="Sr.No"
+                  type="number"
+                  value={row.sr_no}
+                  onChange={(e) => updateProductRow(idx, { sr_no: Number(e.target.value) || 0 })}
+                />
+                <Input
+                  placeholder="Description"
+                  value={row.description}
+                  onChange={(e) => updateProductRow(idx, { description: e.target.value })}
+                />
+                <Input
+                  placeholder="Quantity"
+                  value={row.quantity}
+                  onChange={(e) => updateProductRow(idx, { quantity: e.target.value })}
+                />
+                <Input
+                  placeholder="Batch"
+                  value={row.batch}
+                  onChange={(e) => updateProductRow(idx, { batch: e.target.value })}
+                />
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={addProductRow}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add row
+            </Button>
+          </div>
+        </FormSection>
+        <FormSection title="Details" noSeparator>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Batch / Lot No.</Label>
+              <Input value={certBatchLot} onChange={(e) => setCertBatchLot(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Sticker range (Start)</Label>
+              <Input type="number" value={certStickerStart} onChange={(e) => setCertStickerStart(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Sticker range (End)</Label>
+              <Input value={certStickerEnd} onChange={(e) => setCertStickerEnd(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Irradiation complete date</Label>
+              <Input type="date" value={certIrradiationDate} onChange={(e) => setCertIrradiationDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Minimum dose</Label>
+              <Input value={certMinDose} onChange={(e) => setCertMinDose(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Average dose</Label>
+              <Input value={certAvgDose} onChange={(e) => setCertAvgDose(e.target.value)} />
+            </div>
+          </div>
+        </FormSection>
+        <FormSection title="License & Reference" noSeparator>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2">
+              <Label>DAE License No.</Label>
+              <Input value={certDaeLicense} onChange={(e) => setCertDaeLicense(e.target.value)} placeholder="DAE license number" />
+            </div>
+            <div className="space-y-2">
+              <Label>AERB License No.</Label>
+              <Input value={certAerbLicense} onChange={(e) => setCertAerbLicense(e.target.value)} placeholder="AERB license number" />
+            </div>
+            <div className="space-y-2">
+              <Label>CRN</Label>
+              <Input value={certCrn} onChange={(e) => setCertCrn(e.target.value)} placeholder="CRN" />
+            </div>
+            <div className="space-y-2">
+              <Label>INW</Label>
+              <Input value={certInw} onChange={(e) => setCertInw(e.target.value)} placeholder="INW" />
+            </div>
+            <div className="space-y-2">
+              <Label>JW</Label>
+              <Input value={certJw} onChange={(e) => setCertJw(e.target.value)} placeholder="JW" />
+            </div>
+            <div className="space-y-2">
+              <Label>SO Date</Label>
+              <Input type="date" value={certSoDate} onChange={(e) => setCertSoDate(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Dosimeter Batch</Label>
+              <Input value={certDosimeterBatch} onChange={(e) => setCertDosimeterBatch(e.target.value)} placeholder="Dosimeter batch" />
+            </div>
+          </div>
+        </FormSection>
+        <FormSection title="Weights & Serial" noSeparator>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="space-y-2">
+              <Label>Total Boxes</Label>
+              <Input value={certTotalBoxes} onChange={(e) => setCertTotalBoxes(e.target.value)} placeholder="Total boxes" />
+            </div>
+            <div className="space-y-2">
+              <Label>Total Net Weight</Label>
+              <Input value={certTotalNetWeight} onChange={(e) => setCertTotalNetWeight(e.target.value)} placeholder="Net weight" />
+            </div>
+            <div className="space-y-2">
+              <Label>Total Gross Weight</Label>
+              <Input value={certTotalGrossWeight} onChange={(e) => setCertTotalGrossWeight(e.target.value)} placeholder="Gross weight" />
+            </div>
+            <div className="space-y-2">
+              <Label>Unit Serial From</Label>
+              <Input value={certUnitSerialFrom} onChange={(e) => setCertUnitSerialFrom(e.target.value)} placeholder="From" />
+            </div>
+            <div className="space-y-2">
+              <Label>Unit Serial To</Label>
+              <Input value={certUnitSerialTo} onChange={(e) => setCertUnitSerialTo(e.target.value)} placeholder="To" />
+            </div>
+          </div>
+        </FormSection>
+        <div className="flex justify-end gap-2 border-t pt-4">
+          <Button type="button" variant="outline" onClick={cancelCreateCertificate}>
+            Cancel
+          </Button>
+          <Button type="submit">Generate Certificate</Button>
+        </div>
+      </form>
+    </div>
+  )
+
+  if (allowed && mode === "create") {
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack title="Generate Certificate" noBorder backButton={{ onClick: cancelCreateCertificate }} />
+            <div className="space-y-4 px-6 py-4 h-full">
+            {certificateCreateForm}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
-      <PageHeader title="Certificate Management" />
-      <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
-        {!allowed ? (
-          <p className="text-muted-foreground">You do not have permission to view this module.</p>
-        ) : (
-          <>
-            <div className="flex gap-2 border-b">
-              <Button variant={tab === "pending" ? "default" : "ghost"} size="sm" onClick={() => setTab("pending")}>
-                Pending Generation ({pendingForCert.length})
-              </Button>
-              <Button variant={tab === "certificate" ? "default" : "ghost"} size="sm" onClick={() => setTab("certificate")}>
-                Certificate ({certificates.length})
-              </Button>
-            </div>
-
+      {!allowed ? (
+        <>
+          <PageHeader title="Certificate Management" />
+          <div className="flex-1 overflow-auto px-6 py-4">
+            <p className="text-muted-foreground">You do not have permission to view this module.</p>
+          </div>
+        </>
+      ) : (
+        <>
+          <PageHeaderWithTabs
+            title="Certificate Management"
+            tabs={[
+              { value: "pending", label: "Pending Generation", badge: pendingForCert.length },
+              { value: "certificate", label: "Certificate", badge: certificates.length },
+            ]}
+            value={tab}
+            onValueChange={(v) => setTab(v as Tab)}
+          />
+          <div className="flex-1 overflow-auto px-6 py-4 space-y-4">
             {tab === "pending" && (
               <>
                 {pendingForCert.length === 0 ? (
@@ -273,201 +428,103 @@ export function CertificatesPage() {
 
             {tab === "certificate" && (
               <>
-                <div className="flex gap-4">
-                  <div className="relative flex-1 max-w-sm">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search certificates"
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      exportCertificatesToCsv(
-                        filteredCerts.map((c) => ({
-                          "Certificate No": c.certificate_no ?? c.certificate_id,
-                          "Sales Order": c.sales_order_number ?? c.sales_order_id,
-                          "Product Category": c.product_category ?? "",
-                          Customer: c.customer_name ?? "",
-                          Quantity: c.quantity ?? "",
-                          Units: c.units ?? "",
-                          Status: c.status ?? "",
-                        })),
-                        `certificates-${new Date().toISOString().slice(0, 10)}.csv`
-                      )
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Export
-                  </Button>
-                </div>
-                {filteredCerts.length === 0 ? (
+                {certificates.length === 0 ? (
                   <Empty>
                     <EmptyHeader>
                       <EmptyMedia variant="icon">
                         <Award className="size-4" />
                       </EmptyMedia>
                       <EmptyTitle>No certificates</EmptyTitle>
-                      <EmptyDescription>Generate certificates from the Pending tab.</EmptyDescription>
+                      <EmptyDescription>Generate certificates from the Pending Generation tab.</EmptyDescription>
                     </EmptyHeader>
                   </Empty>
                 ) : (
-                  <div className="rounded-md border">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Certificate No</TableHead>
-                          <TableHead>Sales Order</TableHead>
-                          <TableHead>Category</TableHead>
-                          <TableHead>Customer</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {filteredCerts.map((c) => (
-                          <TableRow key={c.certificate_id}>
-                            <TableCell className="font-medium">{c.certificate_no ?? c.certificate_id}</TableCell>
-                            <TableCell>{c.sales_order_number ?? c.sales_order_id}</TableCell>
-                            <TableCell>{c.product_category ?? "—"}</TableCell>
-                            <TableCell>{c.customer_name ?? "—"}</TableCell>
-                            <TableCell>{c.quantity ?? "—"} {c.units ?? ""}</TableCell>
-                            <TableCell><Badge variant="secondary">{c.status}</Badge></TableCell>
-                            <TableCell className="text-right">
-                              <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
-                              <Button variant="ghost" size="sm" title="Download" onClick={() => toast.info("Download: use Print or Export.")}><Download className="h-4 w-4" /></Button>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
+                  <>
+                    <div className="flex flex-wrap items-center gap-4">
+                      <div className="relative flex-1 min-w-[200px] max-w-sm">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Search certificates"
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="pl-9"
+                        />
+                      </div>
+                      {filteredCerts.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            exportCertificatesToCsv(
+                              filteredCerts.map((c) => ({
+                                "Certificate No": c.certificate_no ?? c.certificate_id,
+                                "Sales Order": c.sales_order_number ?? c.sales_order_id,
+                                "Product Category": c.product_category ?? "",
+                                Customer: c.customer_name ?? "",
+                                Quantity: c.quantity ?? "",
+                                Units: c.units ?? "",
+                                Status: c.status ?? "",
+                              })),
+                              `certificates-${new Date().toISOString().slice(0, 10)}.csv`
+                            )
+                          }
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Export
+                        </Button>
+                      )}
+                    </div>
+                    {filteredCerts.length === 0 ? (
+                      <Empty>
+                        <EmptyHeader>
+                          <EmptyMedia variant="icon">
+                            <Award className="size-4" />
+                          </EmptyMedia>
+                          <EmptyTitle>No matching certificates</EmptyTitle>
+                          <EmptyDescription>Try a different search term.</EmptyDescription>
+                        </EmptyHeader>
+                      </Empty>
+                    ) : (
+                      <div className="rounded-md border">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Certificate No</TableHead>
+                              <TableHead>Sales Order</TableHead>
+                              <TableHead>Category</TableHead>
+                              <TableHead>Customer</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Actions</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {filteredCerts.map((c) => (
+                              <TableRow key={c.certificate_id}>
+                                <TableCell className="font-medium">{c.certificate_no ?? c.certificate_id}</TableCell>
+                                <TableCell>{c.sales_order_number ?? c.sales_order_id}</TableCell>
+                                <TableCell>{c.product_category ?? "—"}</TableCell>
+                                <TableCell>{c.customer_name ?? "—"}</TableCell>
+                                <TableCell>{c.quantity ?? "—"} {c.units ?? ""}</TableCell>
+                                <TableCell><Badge variant="secondary">{c.status}</Badge></TableCell>
+                                <TableCell className="text-right">
+                                  <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Download" onClick={() => toast.info("Download: use Print or Export.")}><Download className="h-4 w-4" /></Button>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}
-          </>
-        )}
-      </div>
-
-      <Dialog open={mode === "create"} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Generate Certificate</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleGenerateSubmit}>
-            <FormSection title="Product rows" noSeparator>
-              <div className="space-y-4 py-4">
-                {certProductRows.map((row, idx) => (
-                  <div key={idx} className="grid grid-cols-4 gap-2">
-                    <Input placeholder="Sr.No" type="number" value={row.sr_no} onChange={(e) => updateProductRow(idx, { sr_no: Number(e.target.value) || 0 })} />
-                    <Input placeholder="Description" value={row.description} onChange={(e) => updateProductRow(idx, { description: e.target.value })} />
-                    <Input placeholder="Quantity" value={row.quantity} onChange={(e) => updateProductRow(idx, { quantity: e.target.value })} />
-                    <Input placeholder="Batch" value={row.batch} onChange={(e) => updateProductRow(idx, { batch: e.target.value })} />
-                  </div>
-                ))}
-                <Button type="button" variant="outline" size="sm" onClick={addProductRow}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add row
-                </Button>
-              </div>
-            </FormSection>
-            <FormSection title="Details" noSeparator>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>Batch / Lot No.</Label>
-                  <Input value={certBatchLot} onChange={(e) => setCertBatchLot(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Sticker range (Start)</Label>
-                  <Input type="number" value={certStickerStart} onChange={(e) => setCertStickerStart(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Sticker range (End)</Label>
-                  <Input value={certStickerEnd} onChange={(e) => setCertStickerEnd(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Irradiation complete date</Label>
-                  <Input type="date" value={certIrradiationDate} onChange={(e) => setCertIrradiationDate(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Minimum dose</Label>
-                  <Input value={certMinDose} onChange={(e) => setCertMinDose(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Average dose</Label>
-                  <Input value={certAvgDose} onChange={(e) => setCertAvgDose(e.target.value)} />
-                </div>
-              </div>
-            </FormSection>
-            <FormSection title="License & Reference" noSeparator>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>DAE License No.</Label>
-                  <Input value={certDaeLicense} onChange={(e) => setCertDaeLicense(e.target.value)} placeholder="DAE license number" />
-                </div>
-                <div className="space-y-2">
-                  <Label>AERB License No.</Label>
-                  <Input value={certAerbLicense} onChange={(e) => setCertAerbLicense(e.target.value)} placeholder="AERB license number" />
-                </div>
-                <div className="space-y-2">
-                  <Label>CRN</Label>
-                  <Input value={certCrn} onChange={(e) => setCertCrn(e.target.value)} placeholder="CRN" />
-                </div>
-                <div className="space-y-2">
-                  <Label>INW</Label>
-                  <Input value={certInw} onChange={(e) => setCertInw(e.target.value)} placeholder="INW" />
-                </div>
-                <div className="space-y-2">
-                  <Label>JW</Label>
-                  <Input value={certJw} onChange={(e) => setCertJw(e.target.value)} placeholder="JW" />
-                </div>
-                <div className="space-y-2">
-                  <Label>SO Date</Label>
-                  <Input type="date" value={certSoDate} onChange={(e) => setCertSoDate(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Dosimeter Batch</Label>
-                  <Input value={certDosimeterBatch} onChange={(e) => setCertDosimeterBatch(e.target.value)} placeholder="Dosimeter batch" />
-                </div>
-              </div>
-            </FormSection>
-            <FormSection title="Weights & Serial" noSeparator>
-              <div className="grid grid-cols-2 gap-4 py-4">
-                <div className="space-y-2">
-                  <Label>Total Boxes</Label>
-                  <Input value={certTotalBoxes} onChange={(e) => setCertTotalBoxes(e.target.value)} placeholder="Total boxes" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Total Net Weight</Label>
-                  <Input value={certTotalNetWeight} onChange={(e) => setCertTotalNetWeight(e.target.value)} placeholder="Net weight" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Total Gross Weight</Label>
-                  <Input value={certTotalGrossWeight} onChange={(e) => setCertTotalGrossWeight(e.target.value)} placeholder="Gross weight" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Unit Serial From</Label>
-                  <Input value={certUnitSerialFrom} onChange={(e) => setCertUnitSerialFrom(e.target.value)} placeholder="From" />
-                </div>
-                <div className="space-y-2">
-                  <Label>Unit Serial To</Label>
-                  <Input value={certUnitSerialTo} onChange={(e) => setCertUnitSerialTo(e.target.value)} placeholder="To" />
-                </div>
-              </div>
-            </FormSection>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-              <Button type="submit">Generate Certificate</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </div>
+        </>
+      )}
 
       <Dialog open={mode === "view" && viewId !== null} onOpenChange={(open) => !open && (setMode(null), setViewId(null))}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

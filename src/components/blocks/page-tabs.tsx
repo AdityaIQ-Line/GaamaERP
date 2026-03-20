@@ -17,7 +17,7 @@ interface PageTabsProps {
 
 export function PageTabs({ tabs, defaultValue, value, onValueChange }: PageTabsProps) {
   return (
-    <div className="border-b pl-2 pr-6">
+    <div className="border-b px-6">
       <Tabs value={value} defaultValue={defaultValue} onValueChange={onValueChange}>
         <TabsList variant="line" className="h-9">
           {tabs.map((tab) => (
