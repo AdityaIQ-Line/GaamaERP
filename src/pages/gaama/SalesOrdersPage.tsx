@@ -149,6 +149,19 @@ const orderStatusColors: Record<string, "default" | "secondary" | "outline"> = {
   Cancelled: "secondary",
 }
 
+/**
+ * String-only paths for status checks — avoids TS2367 when `OrderStatus` omits runtime values
+ * (e.g. older unions without `Approved` / `approved`) or disallows comparing to "".
+ */
+function orderStatusToComparableString(status: unknown): string {
+  if (status === undefined || status === null) return ""
+  return String(status).trim()
+}
+
+function isSalesOrderApprovedStatus(status: unknown): boolean {
+  return orderStatusToComparableString(status).toLowerCase() === "approved"
+}
+
 export function SalesOrdersPage() {
   const data = useData()
   const [mode, setMode] = React.useState<ModalMode>(null)
@@ -452,7 +465,7 @@ export function SalesOrdersPage() {
   const orderStatusOptions = React.useMemo(() => {
     const s = new Set<string>()
     for (const o of orders) {
-      const raw = String(o.order_status).trim()
+      const raw = orderStatusToComparableString(o.order_status)
       if (raw.length > 0) s.add(raw)
     }
     return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
@@ -475,7 +488,8 @@ export function SalesOrdersPage() {
 
   const filteredOrders = orders.filter((o) => {
     if (filterCustomerId !== "all" && o.customer_id !== filterCustomerId) return false
-    if (filterStatus !== "all" && String(o.order_status) !== filterStatus) return false
+    if (filterStatus !== "all" && orderStatusToComparableString(o.order_status) !== filterStatus)
+      return false
     if (filterOrderDate) {
       const d = o.order_date?.slice(0, 10) ?? ""
       if (d !== filterOrderDate) return false
@@ -487,7 +501,7 @@ export function SalesOrdersPage() {
     return (
       (soNum ?? "").toLowerCase().includes(term) ||
       custName.toLowerCase().includes(term) ||
-      String(o.order_status).toLowerCase().includes(term)
+      orderStatusToComparableString(o.order_status).toLowerCase().includes(term)
     )
   })
 
@@ -976,8 +990,7 @@ export function SalesOrdersPage() {
                   <Badge
                     className={cn(
                       "shrink-0 border px-3 py-1.5 text-sm font-medium",
-                      viewOrder.order_status === "Approved" ||
-                      viewOrder.order_status === "approved"
+                      isSalesOrderApprovedStatus(viewOrder.order_status)
                         ? "border-emerald-200 bg-emerald-100/90 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-200"
                         : "border-slate-200 bg-slate-100/90 text-slate-700 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200",
                     )}
