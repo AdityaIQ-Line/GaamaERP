@@ -324,11 +324,11 @@ For hierarchical navigation:
 ```tsx
 export const SIDEBAR_ITEMS = [
   {
-    label: "Products",
+    label: "Sub categories",
     icon: Package,
     href: "/products",
     children: [
-      { label: "All Products", href: "/products" },
+      { label: "All sub categories", href: "/products" },
       { label: "Categories", href: "/products/categories" },
       { label: "Inventory", href: "/products/inventory" },
     ],

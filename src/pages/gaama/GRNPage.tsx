@@ -485,7 +485,7 @@ export function GRNPage() {
                         data.getCustomer(selectedOrder.customer_id)?.customer_name ??
                         "—",
                     },
-                    { label: "Product Name", value: selectedOrder.product_name ?? "—" },
+                    { label: "Sub category", value: selectedOrder.product_name ?? "—" },
                     { label: "Product Category", value: selectedOrder.category_name ?? "—" },
                     {
                       label: "Order Basis",
@@ -560,7 +560,7 @@ export function GRNPage() {
                         data.getCustomer(editingGrn.customer_id ?? "")?.customer_name ??
                         "—",
                     },
-                    { label: "Product Name", value: editingGrn.product_name ?? "—" },
+                    { label: "Sub category", value: editingGrn.product_name ?? "—" },
                     { label: "Product Category", value: editingGrn.category_name ?? "—" },
                     { label: "Order Basis", value: "—" },
                     {
@@ -858,7 +858,7 @@ export function GRNPage() {
               </div>
               {selectedOrder && (
                 <p className="text-sm text-muted-foreground">
-                  Product: {selectedOrder.product_name ?? selectedOrder.category_name} • Category: {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
+                  Sub category: {selectedOrder.product_name ?? selectedOrder.category_name} • Category: {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
                 </p>
               )}
             </div>
@@ -1131,7 +1131,7 @@ export function GRNPage() {
                     <TableHead>GRN No.</TableHead>
                     <TableHead>Sales Order</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Product</TableHead>
+                    <TableHead>Sub category</TableHead>
                     <TableHead>Qty</TableHead>
                     <TableHead>Received Date</TableHead>
                     <TableHead>Status</TableHead>

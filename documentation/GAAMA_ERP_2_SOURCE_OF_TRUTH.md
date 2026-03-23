@@ -71,7 +71,7 @@
 ### C.3 Add / Edit / Delete Rate
 
 - **Entry:** "Add Rate" / "Add New".
-- **Form:** Category* (dropdown; on select auto-fill Category Unit from category.doseUnit), Category Unit (read-only), Pricing Type* (By Carton / By Weight / By Vehicle), Rate Per Unit*, Status, Description. Customer-specific toggle → Customer dropdown, Effective Date, Expiry Date.
+- **Form:** Category* (dropdown; on select auto-fill Category Unit from category.doseUnit), Category Unit (read-only), Pricing Type* (By Carton / By Bag / By Weight / By Vehicle), Rate Per Unit*, Status, Description. Customer-specific toggle → Customer dropdown, Effective Date, Expiry Date.
 - **Validation:** Category, Pricing Type, Rate Per Unit required.
 - **Save:** addRate / updateRate with categoryId, categoryName, pricingType, rate, status, description, customerId?, customerName?, effectiveFrom, effectiveTo.
 - **Delete:** Confirmation dialog → deleteRate(id).
@@ -80,7 +80,7 @@
 ### C.4 Create New Order (Sales Order)
 
 - **Entry:** "+ Create Sales Order" / "Create Order".
-- **Form:** Sales Order Number (auto, read-only), Date*. Customer* (dropdown → auto-fill Name, Address, Email, Phone). Product: Category* → Products (from category subcategories) → Product Name*. Measurement Type* (carton / bag / weight). Quantity* (label by type). Net Weight*, Gross Weight* (gross ≥ net). Order basis: Standard / Vehicle / Weight; if Weight: Weight type for invoicing (Net/Gross). If carton/bag: Sticker range (Start auto from getNextStickerNumber, End = start + qty − 1). Notes optional.
+- **Form:** Sales Order Number (auto, read-only), Date*. Customer* (dropdown → auto-fill Name, Address, Email, Phone). Category* → Sub categories (from category subcategories) → Sub category*. Measurement Type* (carton / bag / weight). Quantity* (label by type). Net Weight*, Gross Weight* (gross ≥ net). Order basis: Standard / Vehicle / Weight; if Weight: Weight type for invoicing (Net/Gross). If carton/bag: Sticker range (Start auto from getNextStickerNumber, End = start + qty − 1). Notes optional.
 - **Actions:** "Save as Draft", "Save & Approve".
 - **Payload:** customerId, customerName, categoryId, categoryName, productId, productName, quantity, unit, measurementType, isVehicleBasis, orderBasis, weightTypeForInvoicing, orderDate, deliveryDate, status Draft|Approved, netWeight, grossWeight, stickerRangeStart, stickerRangeEnd, notes.
 - **List:** View, Edit, Approve (when Draft). On View: show linked GRNs with View link.
@@ -88,7 +88,7 @@
 ### C.5 Create GRN
 
 - **Entry:** "+ Create GRN".
-- **Flow:** Section 1 – Customer* (dropdown) → Sales Order* (filtered by customer; only where total received < SO quantity; status not Completed/Cancelled). On SO select: auto-fill product, category, unit. Section 2 – GRN Number (auto), Customer Challan Number*, Purchase Order Date, Received Quantity*, Received By*, Net Weight*, Gross Weight* (net ≤ gross), Radiation Dose (auto from category if mapped), Radiation Unit (e.g. kGy), Remarks. Section 3 – Rate (optional), Total Amount, GST Rate %, GST Amount, Total with GST (auto). Section 4 – Processing Priority, Bin Description.
+- **Flow:** Section 1 – Customer* (dropdown) → Sales Order* (filtered by customer; only where total received < SO quantity; status not Completed/Cancelled). On SO select: auto-fill sub category, category, unit. Section 2 – GRN Number (auto), Customer Challan Number*, Purchase Order Date, Received Quantity*, Received By*, Net Weight*, Gross Weight* (net ≤ gross), Radiation Dose (auto from category if mapped), Radiation Unit (e.g. kGy), Remarks. Section 3 – Rate (optional), Total Amount, GST Rate %, GST Amount, Total with GST (auto). Section 4 – Processing Priority, Bin Description.
 - **Submit:** addGRN with salesOrderId, salesOrderNumber, customerId, customerName, categoryId, categoryName, productId, productName, customerChallanNumber, vehicleNumber?, receivedQuantity, unit, netWeight, grossWeight, purchaseOrderDate, processingPriority, receivedDate, status Pending, rate?, pricing, gstPercentage, gstAmount, totalAmount, receivedBy, radiationDose, radiationUnit, remarks, binDescription.
 - **GRN List:** View, Edit, Print Sticker, Send for Processing (update status and/or navigate to Process Tracking).
 
@@ -109,7 +109,7 @@
 ### C.8 Gate Pass
 
 - **Data source:** DataContext gatePasses (or derived from challans/GRNs). GatePassRecord: challanId, challanNumber, customerId, customerName, productCategory, productName, quantity, units, challanDateTime, processStatus (Hold|Completed), gatePassStatus (Pending|Generated), gatePassNumber, gatePassDate, processingType, driverName, vehicleNo, etc.
-- **Page:** Filters (Search, Customer, Category, Status). Table: Challan No., Customer, Product Category, Product Name, Quantity, Challan Date & Time, Process Status, Gate Pass Status, Actions.
+- **Page:** Filters (Search, Customer, Category, Status). Table: Challan No., Customer, Product Category, Sub category, Quantity, Challan Date & Time, Process Status, Gate Pass Status, Actions.
 - **Actions:** Generate (modal → set gatePassNumber/date, updateGatePass), View (modal), Print (from view).
 
 ### C.9 Invoice Management

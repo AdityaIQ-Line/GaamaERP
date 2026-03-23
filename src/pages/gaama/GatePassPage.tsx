@@ -232,7 +232,7 @@ export function GatePassPage() {
                     <TableHead>Challan No.</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Product Category</TableHead>
-                    <TableHead>Product Name</TableHead>
+                    <TableHead>Sub category</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Challan Date & Time</TableHead>
                     <TableHead>Process Status</TableHead>
@@ -277,7 +277,7 @@ export function GatePassPage() {
               <p><strong>Challan No.:</strong> {viewGatePass.challan_number ?? viewGatePass.challan_id}</p>
               <p><strong>Customer:</strong> {viewGatePass.customer_name ?? "—"}</p>
               <p><strong>Product Category:</strong> {viewGatePass.product_category ?? "—"}</p>
-              <p><strong>Product Name:</strong> {viewGatePass.product_name ?? "—"}</p>
+              <p><strong>Sub category:</strong> {viewGatePass.product_name ?? "—"}</p>
               <p><strong>Quantity:</strong> {viewGatePass.quantity ?? "—"} {viewGatePass.units ?? ""}</p>
               <p><strong>Gate Pass Number:</strong> {viewGatePass.gate_pass_number ?? "—"}</p>
               <p><strong>Gate Pass Date:</strong> {viewGatePass.gate_pass_date?.slice(0, 10) ?? "—"}</p>

@@ -190,7 +190,12 @@ export function DataProvider({
     state.categories.find((c) => c.category_id === id)
 
   const addRate: DataContextValue["addRate"] = (r) => {
-    const rate: Rate = { ...r, rate_id: generateId("rate") }
+    const now = new Date().toISOString()
+    const rate: Rate = {
+      ...r,
+      rate_id: generateId("rate"),
+      created_at: r.created_at ?? now,
+    }
     setState((s) => ({ ...s, rates: [...s.rates, rate] }))
     return rate
   }

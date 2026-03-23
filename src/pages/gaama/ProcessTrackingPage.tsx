@@ -166,6 +166,7 @@ export function ProcessTrackingPage() {
       "GRN No": g.grn_number ?? g.grn_id,
       "Sales Order No": g.sales_order_number ?? "",
       "Product Category": g.category_name ?? "",
+      "Sub category": g.product_name ?? "",
       Customer: g.customer_name ?? "",
       Quantity: g.received_quantity ?? "",
       Units: g.unit ?? "",
@@ -264,6 +265,7 @@ export function ProcessTrackingPage() {
                     <TableHead>GRN No</TableHead>
                     <TableHead>Sales Order No</TableHead>
                     <TableHead>Product Category</TableHead>
+                    <TableHead>Sub category</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Units</TableHead>
@@ -278,6 +280,7 @@ export function ProcessTrackingPage() {
                       <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
                       <TableCell>{g.sales_order_number ?? "—"}</TableCell>
                       <TableCell>{g.category_name ?? "—"}</TableCell>
+                      <TableCell>{g.product_name ?? "—"}</TableCell>
                       <TableCell>{g.customer_name ?? "—"}</TableCell>
                       <TableCell>{g.received_quantity ?? "—"}</TableCell>
                       <TableCell>{g.unit ?? "—"}</TableCell>

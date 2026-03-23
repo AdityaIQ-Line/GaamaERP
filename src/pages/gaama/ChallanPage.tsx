@@ -364,7 +364,7 @@ export function ChallanPage() {
                           <TableHead>GRN No</TableHead>
                           <TableHead>Sales Order</TableHead>
                           <TableHead>Customer</TableHead>
-                          <TableHead>Product</TableHead>
+                          <TableHead>Sub category</TableHead>
                           <TableHead>Qty</TableHead>
                           <TableHead className="text-right">Action</TableHead>
                         </TableRow>

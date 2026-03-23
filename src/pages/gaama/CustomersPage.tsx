@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Customer, ShippingAddress } from "@/lib/gaama-types"
-import { Plus, Users, Mail, Phone, Search, Eye, Pencil, Download, MapPin, FileText, Info, Trash2 } from "lucide-react"
+import { Plus, Users, Mail, Phone, Search, Eye, Pencil, Download, MapPin, FileText, Info, Trash2, Upload } from "lucide-react"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { cityOptionsForState } from "@/data/indian-state-cities"
 
 const INDUSTRY_TYPES = [
   "Retail",
@@ -136,6 +137,7 @@ export function CustomersPage() {
   const [iecCode, setIecCode] = React.useState("")
   const [msmeRegistration, setMsmeRegistration] = React.useState("")
   const [supportingDocuments, setSupportingDocuments] = React.useState("")
+  const supportingDocsInputRef = React.useRef<HTMLInputElement>(null)
   const [searchTerm, setSearchTerm] = React.useState("")
   const [showEditForm, setShowEditForm] = React.useState(false)
   const [editId, setEditId] = React.useState<string | null>(null)
@@ -184,6 +186,7 @@ export function CustomersPage() {
     setIecCode("")
     setMsmeRegistration("")
     setSupportingDocuments("")
+    if (supportingDocsInputRef.current) supportingDocsInputRef.current.value = ""
     setCurrentStep(1)
     setShowAddForm(true)
   }
@@ -207,7 +210,12 @@ export function CustomersPage() {
     value: string
   ) => {
     setShippingAddresses((prev) =>
-      prev.map((addr) => (addr.id === id ? { ...addr, [field]: value } : addr))
+      prev.map((addr) => {
+        if (addr.id !== id) return addr
+        const next = { ...addr, [field]: value }
+        if (field === "state") next.city = ""
+        return next
+      })
     )
   }
 
@@ -575,18 +583,39 @@ export function CustomersPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <Label>City *</Label>
-                    <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City" />
-                  </div>
-                  <div className="space-y-2">
                     <Label>State *</Label>
-                    <Select value={state} onValueChange={setState}>
+                    <Select
+                      value={state}
+                      onValueChange={(v) => {
+                        setState(v)
+                        setCity("")
+                      }}
+                    >
                       <SelectTrigger>
                         <SelectValue placeholder="Select state" />
                       </SelectTrigger>
                       <SelectContent>
                         {INDIAN_STATES.map((s) => (
-                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                          <SelectItem key={s} value={s}>
+                            {s}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>City *</Label>
+                    <Select value={city || undefined} onValueChange={setCity} disabled={!state}>
+                      <SelectTrigger>
+                        <SelectValue
+                          placeholder={state ? "Select city" : "Select state first"}
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {cityOptionsForState(state, city).map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -635,10 +664,6 @@ export function CustomersPage() {
                           <Textarea value={addr.address} onChange={(e) => handleShippingAddressChange(addr.id, "address", e.target.value)} placeholder="Address" className="min-h-[60px]" />
                         </div>
                         <div className="space-y-2">
-                          <Label>City</Label>
-                          <Input value={addr.city} onChange={(e) => handleShippingAddressChange(addr.id, "city", e.target.value)} placeholder="City" />
-                        </div>
-                        <div className="space-y-2">
                           <Label>State</Label>
                           <Select value={addr.state} onValueChange={(v) => handleShippingAddressChange(addr.id, "state", v)}>
                             <SelectTrigger>
@@ -646,7 +671,30 @@ export function CustomersPage() {
                             </SelectTrigger>
                             <SelectContent>
                               {INDIAN_STATES.map((s) => (
-                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                                <SelectItem key={s} value={s}>
+                                  {s}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>City</Label>
+                          <Select
+                            value={addr.city || undefined}
+                            onValueChange={(v) => handleShippingAddressChange(addr.id, "city", v)}
+                            disabled={!addr.state}
+                          >
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={addr.state ? "Select city" : "Select state first"}
+                              />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {cityOptionsForState(addr.state, addr.city).map((c) => (
+                                <SelectItem key={c} value={c}>
+                                  {c}
+                                </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
@@ -895,7 +943,13 @@ export function CustomersPage() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>State *</Label>
-                      <Select value={state} onValueChange={setState}>
+                      <Select
+                        value={state}
+                        onValueChange={(v) => {
+                          setState(v)
+                          setCity("")
+                        }}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Select State" />
                         </SelectTrigger>
@@ -925,12 +979,20 @@ export function CustomersPage() {
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label>City *</Label>
-                      <Input
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="City"
-                        disabled={!state}
-                      />
+                      <Select value={city || undefined} onValueChange={setCity} disabled={!state}>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={state ? "Select city" : "Select state first"}
+                          />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cityOptionsForState(state, city).map((c) => (
+                            <SelectItem key={c} value={c}>
+                              {c}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Pincode *</Label>
@@ -1001,13 +1063,28 @@ export function CustomersPage() {
                           </div>
                           <div className="space-y-2">
                             <Label>City *</Label>
-                            <Input
-                              value={addr.city}
-                              onChange={(e) =>
-                                handleShippingAddressChange(addr.id, "city", e.target.value)
+                            <Select
+                              value={addr.city || undefined}
+                              onValueChange={(v) =>
+                                handleShippingAddressChange(addr.id, "city", v)
                               }
-                              placeholder="City"
-                            />
+                              disabled={!addr.state}
+                            >
+                              <SelectTrigger>
+                                <SelectValue
+                                  placeholder={
+                                    addr.state ? "Select city" : "Select state first"
+                                  }
+                                />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {cityOptionsForState(addr.state, addr.city).map((c) => (
+                                  <SelectItem key={c} value={c}>
+                                    {c}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </div>
                           <div className="space-y-2">
                             <Label>Pincode *</Label>
@@ -1178,12 +1255,34 @@ export function CustomersPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Supporting Documents</Label>
-                    <Input
-                      value={supportingDocuments}
-                      onChange={(e) => setSupportingDocuments(e.target.value)}
-                      placeholder="Attach supporting documents"
+                    <Label htmlFor="supporting-documents-upload">Supporting Documents</Label>
+                    <input
+                      ref={supportingDocsInputRef}
+                      id="supporting-documents-upload"
+                      type="file"
+                      multiple
+                      className="sr-only"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,application/pdf,image/*"
+                      onChange={(e) => {
+                        const files = e.target.files
+                        if (!files?.length) return
+                        setSupportingDocuments(Array.from(files).map((f) => f.name).join(", "))
+                      }}
                     />
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full justify-center"
+                        onClick={() => supportingDocsInputRef.current?.click()}
+                      >
+                        <Upload className="h-4 w-4 mr-2 shrink-0" aria-hidden />
+                        Upload files
+                      </Button>
+                      <p className="text-xs text-muted-foreground line-clamp-2" title={supportingDocuments || undefined}>
+                        {supportingDocuments ? supportingDocuments : "No files selected"}
+                      </p>
+                    </div>
                   </div>
                 </div>
                 <div className="border-t pt-6">
@@ -1274,6 +1373,12 @@ export function CustomersPage() {
                   setSelectedId(null)
                 },
               }}
+              actions={
+                <Button type="button" onClick={() => openEdit(viewCustomer)}>
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+              }
             />
             <div className="space-y-6 w-full px-6">
             {/* Basic Information */}

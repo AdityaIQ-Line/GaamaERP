@@ -84,7 +84,7 @@
 **Flow:**
 
 - **Entry:** Click “Add Rate” (or “Add New”).
-- **UI:** Form (inline or modal): Category* (dropdown from DataContext categories; on select auto-fill Category Unit from category’s doseUnit), Category Unit (read-only/display), Pricing Type* (e.g. “By Carton” / “By Weight” / “By Vehicle”), Rate Per Unit*, Status (e.g. Active), Description.  
+- **UI:** Form (inline or modal): Category* (dropdown from DataContext categories; on select auto-fill Category Unit from category’s doseUnit), Category Unit (read-only/display), Pricing Type* (e.g. “By Carton” / “By Bag” / “By Weight” / “By Vehicle”), Rate Per Unit*, Status (e.g. Active), Description.  
   Customer-specific: toggle; if ON, show Customer (dropdown) and Effective Date / Expiry Date.
 - **Validation:** Category, Pricing Type, Rate Per Unit required.
 - **Save:** `addRate({ categoryId, categoryName, pricingType, rate, status?, description?, customerId?, customerName?, effectiveFrom, effectiveTo })`. Edit: `updateRate(id, …)`. Delete: confirmation dialog then `deleteRate(id)`.
@@ -103,12 +103,12 @@
 - **UI:** Full form with sections:  
   - Sales Order Number (auto, read-only), Date*.  
   - Customer: dropdown* → auto-fill Customer Name, Address, Email, Phone.  
-  - Product: Category* → Products (from category subcategories) → Product Name*. Measurement Type* (carton / bag / weight). Quantity* (label/placeholder by type: “Number of Cartons” etc.). Net Weight*, Gross Weight* (validation: gross ≥ net).  
+  - Category* → Sub categories (from category subcategories) → Sub category*. Measurement Type* (carton / bag / weight). Quantity* (label/placeholder by type: “Number of Cartons” etc.). Net Weight*, Gross Weight* (validation: gross ≥ net).  
   - Order basis: Standard / Vehicle / Weight. If Weight: “Weight type for invoicing” (Net / Gross).  
   - If carton/bag: Sticker range – Starting Sticker No (auto from `getNextStickerNumber`), Ending Sticker No (auto from start + quantity − 1).  
   - Notes (optional).
 - **Actions:** “Save as Draft” and “Save & Approve”.  
-  Validation: Customer, Product Name, Category, Net Weight, Gross Weight, Measurement Type, Quantity; gross ≥ net.
+  Validation: Customer, Sub category, Category, Net Weight, Gross Weight, Measurement Type, Quantity; gross ≥ net.
 - **Save:** `addSalesOrder({ customerId, customerName, categoryId, categoryName, productId, productName, quantity, unit, measurementType, isVehicleBasis, orderBasis, weightTypeForInvoicing, orderDate, deliveryDate, status: "Draft" | "Approved", netWeight, grossWeight, stickerRangeStart, stickerRangeEnd, notes? })`. Success message then callback (e.g. back to list).
 
 **Intent in GammaERP:** Replace current Create Order with this form (single product per order as in reference), same validation and payload; ensure DataContext and types support all these fields.
@@ -201,7 +201,7 @@
 
 - GammaERP Gate Pass is a generic create form. Gaama ERP 2:
   - **Data source:** Gate pass records come from challans/GRNs (e.g. after process tracking or from rejected GRNs). `GatePassRecord`: challanId, challanNumber, customer, productCategory, productName, quantity, units, challanDateTime, processStatus (Hold/Completed), gatePassStatus (Pending/Generated), gatePassNumber, etc.
-  - **Page:** Filters (Search, Customer, Category, Status); table with columns Challan No., Customer, Product Category, Product Name, Quantity, Challan Date & Time, Process Status, Gate Pass Status, Actions.
+  - **Page:** Filters (Search, Customer, Category, Status); table with columns Challan No., Customer, Product Category, Sub category, Quantity, Challan Date & Time, Process Status, Gate Pass Status, Actions.
   - **Actions:** Generate (opens GenerateGatePassModal), View (ViewGatePassModal), Print (same as View with print).
 
 **Fix:**

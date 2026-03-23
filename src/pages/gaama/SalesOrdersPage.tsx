@@ -43,10 +43,11 @@ import {
   Pencil,
   Info,
   Calendar,
+  CircleCheck,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Link } from "react-router-dom"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { cn } from "@/lib/utils"
@@ -64,6 +65,23 @@ const MEASUREMENT_LABELS: Record<string, string> = {
   bag: "Bag",
   weight: "Weight",
 }
+
+function salesOrderListQuantity(o: SalesOrder): string {
+  if (o.quantity != null && String(o.quantity).trim() !== "") return String(o.quantity)
+  if (o.items?.length) {
+    const sum = o.items.reduce((acc, it) => acc + (it.quantity ?? 0), 0)
+    return sum > 0 ? String(sum) : "—"
+  }
+  return "—"
+}
+
+function salesOrderListUnit(o: SalesOrder): string {
+  const u = o.unit?.trim()
+  if (u) return MEASUREMENT_LABELS[u] ?? u
+  const mt = o.measurement_type?.trim()
+  if (mt) return MEASUREMENT_LABELS[mt] ?? mt
+  return "—"
+}
 const WEIGHT_TYPE_OPTIONS = [
   { value: "net", label: "Net" },
   { value: "gross", label: "Gross" },
@@ -75,23 +93,6 @@ function SalesOrderViewField({ label, children }: { label: string; children: Rea
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <div className="break-words text-sm font-medium text-foreground">{children ?? "—"}</div>
-    </div>
-  )
-}
-
-function SalesOrderViewHighlight({
-  label,
-  children,
-  boxClassName,
-}: {
-  label: string
-  children: React.ReactNode
-  boxClassName?: string
-}) {
-  return (
-    <div className={cn("rounded-[10px] border p-4", boxClassName)}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="mt-1 text-sm font-semibold text-foreground">{children ?? "—"}</div>
     </div>
   )
 }
@@ -123,6 +124,8 @@ function defaultsFromPricingType(pricing: PricingType | undefined): {
       return { orderBasis: "weight", measurementType: "weight" }
     case "By Vehicle":
       return { orderBasis: "vehicle", measurementType: "carton" }
+    case "By Bag":
+      return { orderBasis: "standard", measurementType: "bag" }
     case "By Carton":
     default:
       return { orderBasis: "standard", measurementType: "carton" }
@@ -160,6 +163,10 @@ function orderStatusToComparableString(status: unknown): string {
 
 function isSalesOrderApprovedStatus(status: unknown): boolean {
   return orderStatusToComparableString(status).toLowerCase() === "approved"
+}
+
+function isSalesOrderDraftStatus(status: unknown): boolean {
+  return orderStatusToComparableString(status).toLowerCase() === "draft"
 }
 
 export function SalesOrdersPage() {
@@ -392,7 +399,7 @@ export function SalesOrdersPage() {
     if (!customerId) return "Select a customer."
     if (!orderDate) return "Order date is required."
     if (!categoryId) return "Select a category."
-    if (!productId) return "Select a product."
+    if (!productId) return "Select a sub category."
     if (!quantity || qtyNum <= 0) return "Quantity must be greater than 0."
     const net = parseFloat(netWeight)
     const gross = parseFloat(grossWeight)
@@ -460,6 +467,12 @@ export function SalesOrdersPage() {
       closeOrderForm()
       toast.success("Order approved.")
     }
+  }
+
+  const handleApproveFromList = (o: SalesOrder) => {
+    if (!isSalesOrderDraftStatus(o.order_status)) return
+    data.updateSalesOrder(o.sales_order_id, { order_status: "Approved" })
+    toast.success("Order approved.")
   }
 
   const orderStatusOptions = React.useMemo(() => {
@@ -607,7 +620,7 @@ export function SalesOrdersPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Measurement type and order basis fill from the matching{" "}
                     <span className="text-foreground font-medium">Rate Master</span> row for the
-                    selected customer and category (same logic as value of goods). Product defaults to
+                    selected customer and category (same logic as value of goods). Sub category defaults to
                     the first item in{" "}
                     <span className="text-foreground font-medium">Category Master</span> when
                     available.
@@ -687,13 +700,13 @@ export function SalesOrdersPage() {
 
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Product Name <span className="text-destructive">*</span>
+                    Sub category <span className="text-destructive">*</span>
                   </Label>
                   <Select value={productId} onValueChange={setProductId} disabled={!categoryId}>
                     <SelectTrigger
                       className={`h-9 bg-muted/60 border-border ${!categoryId ? "opacity-50" : ""}`}
                     >
-                      <SelectValue placeholder={categoryId ? "Select product" : "Select category first"} />
+                      <SelectValue placeholder={categoryId ? "Select sub category" : "Select category first"} />
                     </SelectTrigger>
                     <SelectContent>
                       {products.map((p) => (
@@ -935,7 +948,15 @@ export function SalesOrdersPage() {
     const viewSoNum =
       viewOrder.sales_order_number ?? viewOrder.order_number ?? viewOrder.sales_order_id
     const viewLinkedGrns = grnsForOrder(selectedId)
-    const viewMt = (viewOrder.measurement_type as "carton" | "bag" | "weight" | undefined) ?? "carton"
+    const viewMt = ((): "carton" | "bag" | "weight" => {
+      const mt = viewOrder.measurement_type?.trim()
+      if (mt === "carton" || mt === "bag" || mt === "weight") return mt
+      const u = viewOrder.unit?.trim().toLowerCase()
+      if (u === "kg") return "weight"
+      if (u === "bag") return "bag"
+      if (u === "carton") return "carton"
+      return "carton"
+    })()
     const viewStickerType = viewMt === "carton" || viewMt === "bag"
     const viewRate = viewOrder.category_id
       ? pickRateForSalesOrder(
@@ -960,6 +981,21 @@ export function SalesOrdersPage() {
         : viewOrder.weight_type_for_invoicing === "net"
           ? "Net"
           : "—"
+    const viewOrderBasisHelp =
+      viewOrder.order_basis === "vehicle"
+        ? 'Invoice will use "By Vehicle" pricing from Rate Master.'
+        : viewOrder.order_basis === "weight"
+          ? 'Invoice will use "By Weight" pricing from Rate Master.'
+          : 'Invoice will use "By Carton/Bag" pricing from Rate Master.'
+    const viewLineItemRate = viewOrder.items?.[0]?.rate
+    const viewStickerRangeDisplay =
+      viewOrder.sticker_range_start != null && viewOrder.sticker_range_end != null
+        ? `${viewOrder.sticker_range_start} – ${viewOrder.sticker_range_end}`
+        : viewOrder.sticker_range_start != null
+          ? String(viewOrder.sticker_range_start)
+          : viewOrder.sticker_range_end != null
+            ? String(viewOrder.sticker_range_end)
+            : "—"
 
     return (
       <PageShell>
@@ -995,85 +1031,100 @@ export function SalesOrdersPage() {
                   </Badge>
                 </div>
 
-                <div className="border-t border-border bg-card p-5 md:p-6">
-                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-                    <div className="space-y-4">
+                <div className="border-t border-border bg-card p-5 md:p-6 space-y-8">
+                  {/* Pencil oCP5D — order date (SO number is in header) */}
+                  <SalesOrderViewField label="Date">
+                    {viewOrder.order_date?.slice(0, 10) ?? "—"}
+                  </SalesOrderViewField>
+
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Customer Field Details</h2>
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                       <SalesOrderViewField label="Customer Name">
                         {viewCust?.customer_name ?? viewOrder.customer_name ?? viewOrder.customer_id}
                       </SalesOrderViewField>
-                      <SalesOrderViewField label="Order Date">
-                        {viewOrder.order_date?.slice(0, 10) ?? "—"}
+                      <SalesOrderViewField label="Customer Address">
+                        {viewCust?.billing_address ?? "—"}
                       </SalesOrderViewField>
-                      <SalesOrderViewField label="Expected Delivery">
-                        {viewOrder.delivery_date?.slice(0, 10) ?? "—"}
+                      <SalesOrderViewField label="Customer Email">
+                        {viewCust?.email ?? "—"}
                       </SalesOrderViewField>
-                      <div className="rounded-[10px] border border-border bg-muted/30 p-4">
-                        <SalesOrderViewField label="Customer Address">
-                          {viewCust?.billing_address ?? "—"}
-                        </SalesOrderViewField>
-                      </div>
-                      <div className="rounded-[10px] border border-border bg-muted/30 p-4">
-                        <SalesOrderViewField label="Notes">{viewOrder.notes ?? "—"}</SalesOrderViewField>
-                      </div>
+                      <SalesOrderViewField label="Customer Phone">
+                        {viewCust?.phone ?? "—"}
+                      </SalesOrderViewField>
                     </div>
+                  </div>
 
-                    <div className="space-y-4">
-                      <SalesOrderViewHighlight
-                        label="Product Category"
-                        boxClassName="border-border bg-muted/40"
-                      >
-                        {viewCat?.category_name ?? viewOrder.category_name ?? "—"}
-                      </SalesOrderViewHighlight>
-                      <SalesOrderViewHighlight
-                        label="Product"
-                        boxClassName="border-border bg-muted/40"
-                      >
-                        {viewProductName}
-                      </SalesOrderViewHighlight>
-                      <SalesOrderViewHighlight
-                        label="Quantity"
-                        boxClassName="border-border bg-muted/40"
-                      >
-                        {viewQty} {viewOrder.unit ? ` ${viewOrder.unit}` : ""}
-                      </SalesOrderViewHighlight>
-                      <SalesOrderViewHighlight
-                        label="Value of Goods (₹)"
-                        boxClassName="border-border bg-muted/40"
-                      >
-                        ₹{(viewOrder.total_amount ?? 0).toLocaleString("en-IN")}
-                      </SalesOrderViewHighlight>
-                      <SalesOrderViewHighlight
-                        label="Rate Master (₹ / unit)"
-                        boxClassName="border-border bg-muted/40"
-                      >
-                        {viewRate?.rate_value != null
-                          ? `₹${viewRate.rate_value.toLocaleString("en-IN")}`
-                          : "—"}
-                      </SalesOrderViewHighlight>
-                    </div>
-
-                    <div className="space-y-4">
+                  <div>
+                    <h2 className="text-lg font-semibold text-foreground">Order Details</h2>
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                       <SalesOrderViewField label="Measurement Type">
                         {MEASUREMENT_LABELS[viewMt] ?? viewMt}
                       </SalesOrderViewField>
-                      <SalesOrderViewField label="Order Basis">{viewOrderBasisLabel}</SalesOrderViewField>
+                      <SalesOrderViewField label="Quantity">{viewQty}</SalesOrderViewField>
+                      <SalesOrderViewField label="Value of Goods (₹)">
+                        ₹{(viewOrder.total_amount ?? 0).toLocaleString("en-IN")}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Product Category">
+                        {viewCat?.category_name ?? viewOrder.category_name ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Sub category">{viewProductName}</SalesOrderViewField>
+                      <SalesOrderViewField label="Gross Weight (kg)">
+                        {viewOrder.gross_weight ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Net Weight (kg)">
+                        {viewOrder.net_weight ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Expected Delivery Date">
+                        {viewOrder.delivery_date?.slice(0, 10) ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Rate Master (₹ / unit)">
+                        {viewRate?.rate_value != null
+                          ? `₹${viewRate.rate_value.toLocaleString("en-IN")}`
+                          : "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Pricing type (Rate Master)">
+                        {viewRate?.pricing_type ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Line rate (₹ / unit)">
+                        {viewLineItemRate != null && !Number.isNaN(viewLineItemRate)
+                          ? `₹${viewLineItemRate.toLocaleString("en-IN")}`
+                          : "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Tax amount (₹)">
+                        {viewOrder.tax_amount != null
+                          ? `₹${viewOrder.tax_amount.toLocaleString("en-IN")}`
+                          : "—"}
+                      </SalesOrderViewField>
+                      <div className="sm:col-span-2 lg:col-span-4">
+                        <SalesOrderViewField label="Order Basis">{viewOrderBasisLabel}</SalesOrderViewField>
+                        <p className="mt-1 text-xs text-primary">{viewOrderBasisHelp}</p>
+                      </div>
                       {viewOrder.order_basis === "weight" && (
-                        <SalesOrderViewField label="Weight type for invoicing">{viewWtLabel}</SalesOrderViewField>
+                        <SalesOrderViewField label="Weight type for invoicing">
+                          {viewWtLabel}
+                        </SalesOrderViewField>
                       )}
-                      <SalesOrderViewField label="Gross Weight (kg)">{viewOrder.gross_weight ?? "—"}</SalesOrderViewField>
-                      <SalesOrderViewField label="Net Weight (kg)">{viewOrder.net_weight ?? "—"}</SalesOrderViewField>
-                      {viewStickerType && (
-                        <>
-                          <SalesOrderViewField label="Sticker range start">
-                            {viewOrder.sticker_range_start ?? "—"}
-                          </SalesOrderViewField>
-                          <SalesOrderViewField label="Sticker range end">
-                            {viewOrder.sticker_range_end ?? "—"}
-                          </SalesOrderViewField>
-                        </>
-                      )}
+                      <SalesOrderViewField label="Created at">
+                        {viewOrder.created_at?.slice(0, 10) ?? "—"}
+                      </SalesOrderViewField>
+                      <SalesOrderViewField label="Created by">
+                        {viewOrder.created_by ?? "—"}
+                      </SalesOrderViewField>
                     </div>
                   </div>
+
+                  {viewStickerType && (
+                    <div>
+                      <h2 className="text-lg font-semibold text-foreground">Sticker Range</h2>
+                      <div className="mt-4">
+                        <SalesOrderViewField label="Sticker range">
+                          {viewStickerRangeDisplay}
+                        </SalesOrderViewField>
+                      </div>
+                    </div>
+                  )}
+
                 </div>
               </div>
 
@@ -1108,7 +1159,7 @@ export function SalesOrdersPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>GRN No</TableHead>
-                          <TableHead>Product</TableHead>
+                          <TableHead>Sub category</TableHead>
                           <TableHead>Quantity</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Action</TableHead>
@@ -1239,7 +1290,7 @@ export function SalesOrdersPage() {
                     <Input readOnly value={roCategoryName} className="h-9 cursor-not-allowed bg-muted/50" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-muted-foreground">Product Name</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Sub category</Label>
                     <Input readOnly value={roProductName} className="h-9 cursor-not-allowed bg-muted/50" />
                   </div>
                   <div className="space-y-2">
@@ -1247,11 +1298,21 @@ export function SalesOrdersPage() {
                     <Input readOnly type="date" value={deliveryDate} className="h-9 cursor-not-allowed bg-muted/50" />
                   </div>
                 </div>
-                <div className="mt-6 flex flex-wrap items-center gap-3 border-t border-border pt-4">
-                  <Label htmlFor="vehicle-basis-ro" className="text-sm font-medium">
+                <div className="mt-6 space-y-2 border-t border-border pt-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Vehicle basis order
-                  </Label>
-                  <Switch id="vehicle-basis-ro" checked={orderBasis === "vehicle"} disabled />
+                  </p>
+                  <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-4">
+                    <Checkbox
+                      id="vehicle-basis-ro"
+                      checked={orderBasis === "vehicle"}
+                      disabled
+                      aria-readonly
+                    />
+                    <span className="text-sm text-foreground">
+                      {orderBasis === "vehicle" ? "Yes - Vehicle basis order" : "No - Regular order"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1426,7 +1487,7 @@ export function SalesOrdersPage() {
                 <Button type="button" onClick={handleEditSaveChanges}>
                   Save Changes
                 </Button>
-                {(editOrder.order_status === "Draft" || editOrder.order_status === "draft") && (
+                {isSalesOrderDraftStatus(editOrder.order_status) && (
                   <Button type="button" variant="secondary" onClick={handleSaveAndApprove}>
                     Save & Approve
                   </Button>
@@ -1530,12 +1591,15 @@ export function SalesOrdersPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Order No.</TableHead>
-                    <TableHead>Customer</TableHead>
+                    <TableHead>Order No</TableHead>
                     <TableHead>Date</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>Quantity</TableHead>
+                    <TableHead>Unit</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead className="w-[1%] text-right whitespace-nowrap px-2 pl-3 last:pr-3">
+                      Actions
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1544,26 +1608,35 @@ export function SalesOrdersPage() {
                       <TableCell className="font-medium">
                         {o.sales_order_number ?? o.order_number ?? o.sales_order_id}
                       </TableCell>
-                      <TableCell>{o.customer_name ?? data.getCustomer(o.customer_id)?.customer_name ?? o.customer_id}</TableCell>
                       <TableCell>{o.order_date?.slice(0, 10)}</TableCell>
+                      <TableCell>{o.customer_name ?? data.getCustomer(o.customer_id)?.customer_name ?? o.customer_id}</TableCell>
+                      <TableCell>{salesOrderListQuantity(o)}</TableCell>
+                      <TableCell>{salesOrderListUnit(o)}</TableCell>
                       <TableCell>
                         <Badge variant={orderStatusColors[o.order_status] ?? "secondary"}>
                           {o.order_status}
                         </Badge>
                       </TableCell>
-                      <TableCell>₹{(o.total_amount ?? 0).toLocaleString()}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" title="View" onClick={() => openView(o)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(o)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title={`GRNs (${grnsForOrder(o.sales_order_id).length})`} asChild>
-                          <Link to="/grn" state={{ salesOrderId: o.sales_order_id }}>
-                            <PackageCheck className="h-4 w-4" />
-                          </Link>
-                        </Button>
+                      <TableCell className="w-[1%] text-right whitespace-nowrap px-2 pl-3 last:pr-3">
+                        <div className="inline-flex flex-nowrap items-center justify-end gap-0.5">
+                          {isSalesOrderDraftStatus(o.order_status) && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              title="Approve"
+                              onClick={() => handleApproveFromList(o)}
+                            >
+                              <CircleCheck className="h-4 w-4" />
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" title="View" onClick={() => openView(o)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(o)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

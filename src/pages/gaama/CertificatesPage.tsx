@@ -216,7 +216,7 @@ export function CertificatesPage() {
   const certificateCreateForm = (
     <div className="rounded-lg border border-border bg-card p-6 max-w-4xl">
       <form onSubmit={handleGenerateSubmit}>
-        <FormSection title="Product rows" noSeparator>
+        <FormSection title="Sub category rows" noSeparator>
           <div className="space-y-4 py-4">
             {certProductRows.map((row, idx) => (
               <div key={idx} className="grid grid-cols-4 gap-2">
@@ -245,7 +245,7 @@ export function CertificatesPage() {
             ))}
             <Button type="button" variant="outline" size="sm" onClick={addProductRow}>
               <Plus className="h-4 w-4 mr-2" />
-              Add row
+              Add sub category row
             </Button>
           </div>
         </FormSection>
@@ -398,7 +398,7 @@ export function CertificatesPage() {
                         <TableRow>
                           <TableHead>GRN No</TableHead>
                           <TableHead>Sales Order</TableHead>
-                          <TableHead>Product</TableHead>
+                          <TableHead>Sub category</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Quantity</TableHead>
                           <TableHead className="text-right">Action</TableHead>
@@ -460,6 +460,7 @@ export function CertificatesPage() {
                                 "Certificate No": c.certificate_no ?? c.certificate_id,
                                 "Sales Order": c.sales_order_number ?? c.sales_order_id,
                                 "Product Category": c.product_category ?? "",
+                                "Sub category": c.product_name ?? "",
                                 Customer: c.customer_name ?? "",
                                 Quantity: c.quantity ?? "",
                                 Units: c.units ?? "",
@@ -537,7 +538,7 @@ export function CertificatesPage() {
                 <p><strong>Certificate No.:</strong> {viewCert.certificate_no ?? viewCert.certificate_id}</p>
                 <p><strong>Sales Order:</strong> {viewCert.sales_order_number ?? viewCert.sales_order_id}</p>
                 <p><strong>Product Category:</strong> {viewCert.product_category ?? "—"}</p>
-                <p><strong>Product Name:</strong> {viewCert.product_name ?? "—"}</p>
+                <p><strong>Sub category:</strong> {viewCert.product_name ?? "—"}</p>
                 <p><strong>Customer:</strong> {viewCert.customer_name ?? "—"}</p>
                 <p><strong>Quantity:</strong> {viewCert.quantity ?? "—"} {viewCert.units ?? ""}</p>
                 <p><strong>Status:</strong> <Badge variant="secondary">{viewCert.status}</Badge></p>
@@ -561,7 +562,7 @@ export function CertificatesPage() {
               </div>
               {viewCert.product_rows && viewCert.product_rows.length > 0 && (
                 <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Product rows</h4>
+                  <h4 className="font-medium mb-2">Sub category rows</h4>
                   <Table>
                     <TableHeader>
                       <TableRow>

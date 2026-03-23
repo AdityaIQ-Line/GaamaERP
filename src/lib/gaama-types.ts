@@ -89,7 +89,7 @@ export interface Category {
 }
 
 // ─── Rate Master ─────────────────────────────────────────────────────────────
-export type PricingType = "By Carton" | "By Weight" | "By Vehicle"
+export type PricingType = "By Carton" | "By Bag" | "By Weight" | "By Vehicle"
 
 export interface Rate {
   rate_id: string
@@ -102,6 +102,8 @@ export interface Rate {
   effective_date: string
   effective_from?: string
   effective_to?: string
+  /** When the rate row was created (Rate Master list). */
+  created_at?: string
   // Gaama ERP 2
   pricing_type?: PricingType
   customer_id?: string

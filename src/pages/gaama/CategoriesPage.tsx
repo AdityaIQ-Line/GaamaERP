@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Category, SubCategory } from "@/lib/gaama-types"
-import { Plus, FolderTree, Trash2, Search, LayoutGrid, List, Pencil } from "lucide-react"
+import { Plus, FolderTree, Trash2, Search, Pencil } from "lucide-react"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import {
   Select,
@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "sonner"
+import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -44,7 +45,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-const DOSE_UNITS = ["kGy", "Gy", "Mrad"]
+/** Dose unit is fixed for all categories (not user-selectable). */
+const FIXED_DOSE_UNIT = "kGy"
 const STATUS_OPTIONS = ["Active", "Inactive"]
 
 interface SubCategoryForm {
@@ -64,13 +66,11 @@ export function CategoriesPage() {
   const [showForm, setShowForm] = React.useState(false)
   const [formCategoryName, setFormCategoryName] = React.useState("")
   const [formDoseCount, setFormDoseCount] = React.useState<string>("")
-  const [formDoseUnit, setFormDoseUnit] = React.useState("kGy")
   const [formStatus, setFormStatus] = React.useState("Active")
   const [formDescription, setFormDescription] = React.useState("")
   const [subcategories, setSubcategories] = React.useState<SubCategoryForm[]>([])
   const [newSubName, setNewSubName] = React.useState("")
   const [searchTerm, setSearchTerm] = React.useState("")
-  const [viewMode, setViewMode] = React.useState<"table" | "list">("table")
   const [categoryToDelete, setCategoryToDelete] = React.useState<Category | null>(null)
 
   const allowed = canAccess(data.currentRole, "categories")
@@ -79,7 +79,6 @@ export function CategoriesPage() {
   const openCreate = () => {
     setFormCategoryName("")
     setFormDoseCount("")
-    setFormDoseUnit("kGy")
     setFormStatus("Active")
     setFormDescription("")
     setSubcategories([])
@@ -91,7 +90,6 @@ export function CategoriesPage() {
   const openEdit = (c: Category) => {
     setFormCategoryName(c.category_name)
     setFormDoseCount(String(c.dose_count ?? ""))
-    setFormDoseUnit(c.dose_unit ?? "kGy")
     setFormStatus(c.status ?? "Active")
     setFormDescription(c.description ?? "")
     setSubcategories(
@@ -124,11 +122,6 @@ export function CategoriesPage() {
       toast.error("Dose Count is required and must be a valid number.")
       return
     }
-    if (!formDoseUnit) {
-      toast.error("Dose Unit is required.")
-      return
-    }
-
     const now = new Date().toISOString()
     const subcategoriesTyped: SubCategory[] = subcategories.map((s) => ({
       id: s.id,
@@ -140,7 +133,7 @@ export function CategoriesPage() {
       data.updateCategory(selectedId, {
         category_name: formCategoryName.trim(),
         dose_count: doseNum,
-        dose_unit: formDoseUnit,
+        dose_unit: FIXED_DOSE_UNIT,
         status: formStatus,
         description: formDescription.trim() || undefined,
         subcategories: subcategoriesTyped,
@@ -150,7 +143,7 @@ export function CategoriesPage() {
       data.addCategory({
         category_name: formCategoryName.trim(),
         dose_count: doseNum,
-        dose_unit: formDoseUnit,
+        dose_unit: FIXED_DOSE_UNIT,
         status: formStatus,
         description: formDescription.trim() || undefined,
         subcategories: subcategoriesTyped,
@@ -210,22 +203,13 @@ export function CategoriesPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Dose Unit *</Label>
-                      <Select
-                        value={formDoseUnit}
-                        onValueChange={setFormDoseUnit}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DOSE_UNITS.map((u) => (
-                            <SelectItem key={u} value={u}>
-                              {u}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label>Dose Unit</Label>
+                      <Input
+                        readOnly
+                        value={FIXED_DOSE_UNIT}
+                        className="cursor-not-allowed bg-muted/50"
+                        aria-readonly="true"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label>Status</Label>
@@ -255,13 +239,13 @@ export function CategoriesPage() {
                 </div>
               </FormSection>
 
-              <FormSection title="Products" compact noSeparator>
+              <FormSection title="Sub categories" compact noSeparator>
                 <div className="space-y-4 py-4">
                   <div className="flex gap-2">
                     <Input
                       value={newSubName}
                       onChange={(e) => setNewSubName(e.target.value)}
-                      placeholder="Product name"
+                      placeholder="Sub category name"
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
                           e.preventDefault()
@@ -275,7 +259,7 @@ export function CategoriesPage() {
                       onClick={handleAddSubcategory}
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Add product
+                      Add
                     </Button>
                   </div>
                   {subcategories.length > 0 && (
@@ -339,34 +323,14 @@ export function CategoriesPage() {
           </p>
         ) : (
           <>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="relative max-w-sm flex-1 min-w-[200px]">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by name or description"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-              <div className="ml-auto flex rounded-md border p-1">
-                <Button
-                  variant={viewMode === "table" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("table")}
-                  title="Table view"
-                >
-                  <LayoutGrid className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "list" ? "secondary" : "ghost"}
-                  size="sm"
-                  onClick={() => setViewMode("list")}
-                  title="List view"
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </div>
+            <div className="relative max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or description"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9"
+              />
             </div>
 
             {filteredCategories.length === 0 ? (
@@ -382,23 +346,51 @@ export function CategoriesPage() {
                 </EmptyHeader>
                 <Button onClick={openCreate}>Add Category</Button>
               </Empty>
-            ) : viewMode === "table" ? (
+            ) : (
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
+                      <TableHead>Sub categories</TableHead>
                       <TableHead>Dose</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Description</TableHead>
+                      <TableHead>Created at</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filteredCategories.map((c) => (
                       <TableRow key={c.category_id}>
-                        <TableCell className="font-medium">
-                          {c.category_name}
+                        <TableCell className="max-w-md whitespace-normal align-top">
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-medium">{c.category_name}</span>
+                            {c.description ? (
+                              <span className="text-sm font-normal text-muted-foreground leading-snug">
+                                {c.description}
+                              </span>
+                            ) : null}
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[260px] whitespace-normal align-top">
+                          {(c.subcategories ?? []).some((s) => s.name) ? (
+                            <div className="flex flex-wrap gap-1.5">
+                              {(c.subcategories ?? [])
+                                .filter((s) => s.name)
+                                .map((s) => (
+                                  <Badge
+                                    key={s.id}
+                                    variant="secondary"
+                                    className="max-w-full truncate font-normal"
+                                    title={s.name}
+                                  >
+                                    {s.name}
+                                  </Badge>
+                                ))}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">—</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           {c.dose_count != null && c.dose_unit
@@ -406,7 +398,17 @@ export function CategoriesPage() {
                             : "—"}
                         </TableCell>
                         <TableCell>{c.status ?? "—"}</TableCell>
-                        <TableCell>{c.description ?? "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                          {c.created_at
+                            ? new Date(c.created_at).toLocaleString("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}>
                             <Pencil className="h-4 w-4" />
@@ -425,41 +427,6 @@ export function CategoriesPage() {
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredCategories.map((c) => (
-                  <div
-                    key={c.category_id}
-                    className="rounded-lg border bg-card p-4 flex flex-col gap-2"
-                  >
-                    <div className="font-medium">{c.category_name}</div>
-                    <p className="text-sm text-muted-foreground">
-                      {c.dose_count != null && c.dose_unit
-                        ? `${c.dose_count} ${c.dose_unit}`
-                        : "—"}
-                      {" · "}
-                      {c.status ?? "—"}
-                    </p>
-                    {c.description ? (
-                      <p className="text-sm line-clamp-2">{c.description}</p>
-                    ) : null}
-                    <div className="flex flex-wrap gap-2 mt-2 pt-2 border-t">
-                      <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        title="Delete"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setCategoryToDelete(c)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
               </div>
             )}
           </>

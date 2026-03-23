@@ -39,7 +39,7 @@ import { Plus, IndianRupee, Search, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 
-const PRICING_TYPES: PricingType[] = ["By Carton", "By Weight", "By Vehicle"]
+const PRICING_TYPES: PricingType[] = ["By Carton", "By Bag", "By Weight", "By Vehicle"]
 const STATUS_OPTIONS = ["Active", "Inactive"]
 
 type RatesFormMode = "create" | "edit" | null
@@ -117,6 +117,10 @@ export function RatesPage() {
       alert("Rate Per Unit must be a valid non-negative number.")
       return
     }
+    if (customerSpecific && !formCustomerId) {
+      toast.error("Select a customer for a customer-specific rate, or turn off Customer-specific rate.")
+      return
+    }
 
     const effectiveFromIso = new Date(formEffectiveFrom).toISOString()
     const effectiveToIso = formEffectiveTo
@@ -174,7 +178,35 @@ export function RatesPage() {
     )
   })
 
-  const renderRateForm = (footer: React.ReactNode) => (
+  const renderRateForm = (footer: React.ReactNode) => {
+    const validityFrozen = mode === "edit"
+    const dateInputClass = validityFrozen
+      ? "h-9 cursor-not-allowed border-border bg-muted/50"
+      : "h-9 bg-muted/60 border-border"
+
+    const overviewCategoryName =
+      categories.find((c) => c.category_id === formCategoryId)?.category_name ?? "—"
+    const overviewCustomerLine =
+      customerSpecific && formCustomerId
+        ? customers.find((c) => c.customer_id === formCustomerId)?.customer_name ?? "—"
+        : "All customers (category default)"
+    const overviewRateLine =
+      formRateValue !== "" && Number.isFinite(Number(formRateValue))
+        ? `₹${Number(formRateValue).toLocaleString("en-IN")} per unit`
+        : "—"
+    const overviewValidityLine =
+      formEffectiveFrom
+        ? formEffectiveTo
+          ? `${formEffectiveFrom} → ${formEffectiveTo}`
+          : `${formEffectiveFrom} (no expiry)`
+        : "—"
+    const overviewDescriptionPreview = formDescription.trim()
+      ? formDescription.trim().length > 120
+        ? `${formDescription.trim().slice(0, 120)}…`
+        : formDescription.trim()
+      : "—"
+
+    return (
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="space-y-2">
@@ -245,45 +277,69 @@ export function RatesPage() {
             placeholder="Enter rate"
             value={formRateValue}
             onChange={(e) => setFormRateValue(e.target.value)}
-            className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
+            className="h-8 bg-muted/60 border-border placeholder:text-muted-foreground"
           />
         </div>
       </div>
 
       <Separator />
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <Switch
-            id="customer-specific-rate"
-            checked={customerSpecific}
-            onCheckedChange={(v) => setCustomerSpecific(!!v)}
-          />
-          <Label htmlFor="customer-specific-rate" className="text-base font-medium cursor-pointer">
-            Customer Specific Rate
-          </Label>
+      <div className="rounded-lg border border-border bg-muted/20 p-4 sm:p-5">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-6">
+          <div className="flex shrink-0 items-start gap-3 pt-0.5">
+            <Switch
+              id="customer-specific-rate"
+              checked={customerSpecific}
+              onCheckedChange={(v) => {
+                setCustomerSpecific(!!v)
+                if (!v) setFormCustomerId("")
+              }}
+            />
+            <div className="space-y-1">
+              <Label htmlFor="customer-specific-rate" className="cursor-pointer text-base font-medium">
+                Customer-specific rate
+              </Label>
+              <p className="max-w-xl text-xs leading-snug text-muted-foreground">
+                Default: one rate for the whole category. Turn on to limit this rate to a single
+                customer.
+              </p>
+            </div>
+          </div>
+          {customerSpecific ? (
+            <div className="min-w-0 flex-1 space-y-2 sm:pt-0.5">
+              <Label htmlFor="rate-specific-customer" className="text-sm">
+                Customer <span className="text-destructive">*</span>
+              </Label>
+              <Select value={formCustomerId || undefined} onValueChange={setFormCustomerId}>
+                <SelectTrigger
+                  id="rate-specific-customer"
+                  className="h-10 w-full min-w-0 bg-background shadow-sm"
+                >
+                  <SelectValue placeholder="Choose one customer" />
+                </SelectTrigger>
+                <SelectContent position="popper">
+                  {customers.map((c) => (
+                    <SelectItem key={c.customer_id} value={c.customer_id}>
+                      {c.customer_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : null}
         </div>
       </div>
-      {customerSpecific && (
-        <div className="space-y-2 pl-0 sm:pl-11">
-          <Label>Customer</Label>
-          <Select value={formCustomerId} onValueChange={setFormCustomerId}>
-            <SelectTrigger className="h-9 bg-muted/60 border-border">
-              <SelectValue placeholder="Select customer" />
-            </SelectTrigger>
-            <SelectContent>
-              {customers.map((c) => (
-                <SelectItem key={c.customer_id} value={c.customer_id}>
-                  {c.customer_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       <div className="space-y-4 border-t border-border pt-6">
-        <h3 className="text-base font-semibold">Validity Period</h3>
+        <div>
+          <h3 className="text-base font-semibold">Validity Period</h3>
+          {validityFrozen ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Effective and expiry dates cannot be changed when editing. Add a new rate to use a
+              different validity period.
+            </p>
+          ) : null}
+        </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Effective Date</Label>
@@ -291,7 +347,8 @@ export function RatesPage() {
               type="date"
               value={formEffectiveFrom}
               onChange={(e) => setFormEffectiveFrom(e.target.value)}
-              className="h-9 bg-muted/60 border-border"
+              disabled={validityFrozen}
+              className={dateInputClass}
             />
           </div>
           <div className="space-y-2">
@@ -300,7 +357,8 @@ export function RatesPage() {
               type="date"
               value={formEffectiveTo}
               onChange={(e) => setFormEffectiveTo(e.target.value)}
-              className="h-9 bg-muted/60 border-border"
+              disabled={validityFrozen}
+              className={dateInputClass}
             />
           </div>
         </div>
@@ -317,9 +375,63 @@ export function RatesPage() {
         />
       </div>
 
+      <div className="space-y-3 border-t border-border pt-6">
+        <div>
+          <h3 className="text-base font-semibold">Rate overview</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Quick summary of this rate from the fields above (updates as you edit).
+          </p>
+        </div>
+        <dl className="grid grid-cols-1 gap-4 rounded-lg border border-border bg-muted/15 p-4 text-sm sm:grid-cols-2">
+          <div className="space-y-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Category
+            </dt>
+            <dd className="font-medium text-foreground">{overviewCategoryName}</dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Pricing type
+            </dt>
+            <dd className="font-medium text-foreground">{formPricingType}</dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Rate per unit
+            </dt>
+            <dd className="tabular-nums font-medium text-foreground">{overviewRateLine}</dd>
+          </div>
+          <div className="space-y-1">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Status
+            </dt>
+            <dd className="font-medium text-foreground">{formStatus}</dd>
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Applies to
+            </dt>
+            <dd className="font-medium text-foreground">{overviewCustomerLine}</dd>
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Validity
+            </dt>
+            <dd className="font-medium text-foreground">{overviewValidityLine}</dd>
+          </div>
+          <div className="space-y-1 sm:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Description
+            </dt>
+            <dd className="whitespace-pre-wrap text-foreground">{overviewDescriptionPreview}</dd>
+          </div>
+        </dl>
+      </div>
+
       {footer}
     </form>
-  )
+    )
+  }
 
   if (allowed && (mode === "create" || mode === "edit")) {
     const formTitle = mode === "create" ? "Add Rate" : "Edit Rate"
@@ -401,15 +513,22 @@ export function RatesPage() {
                   <TableRow>
                     <TableHead>Category</TableHead>
                     <TableHead>Pricing Type</TableHead>
-                    <TableHead>Rate</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Effective From</TableHead>
-                    <TableHead>Effective To</TableHead>
+                    <TableHead>Rate Per Unit</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created At</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRates.map((r) => (
+                  {filteredRates.map((r) => {
+                    const amount =
+                      typeof r.rate_value === "number" && !Number.isNaN(r.rate_value)
+                        ? r.rate_value
+                        : Number.parseFloat(String(r.rate ?? ""))
+                    const rateDisplay = Number.isFinite(amount) ? amount : null
+                    const createdSource =
+                      r.created_at ?? r.effective_from ?? r.effective_date
+                    return (
                     <TableRow key={r.rate_id}>
                       <TableCell>
                         {data.getCategory(r.category_id)?.category_name ??
@@ -418,15 +537,25 @@ export function RatesPage() {
                       </TableCell>
                       <TableCell>{r.pricing_type ?? "—"}</TableCell>
                       <TableCell>
-                        {r.rate_value != null ? r.rate_value : r.rate ?? "—"}
+                        {rateDisplay != null ? (
+                          <span className="tabular-nums">
+                            ₹{Number(rateDisplay).toLocaleString("en-IN")}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
                       </TableCell>
-                      <TableCell>{r.customer_name ?? "—"}</TableCell>
-                      <TableCell>
-                        {(r.effective_from ?? r.effective_date)?.slice(0, 10) ??
-                          "—"}
-                      </TableCell>
-                      <TableCell>
-                        {r.effective_to?.slice(0, 10) ?? "—"}
+                      <TableCell>{r.status ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                        {createdSource
+                          ? new Date(createdSource).toLocaleString("en-IN", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "—"}
                       </TableCell>
                       <TableCell className="text-right">
                         <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(r)}>
@@ -443,7 +572,8 @@ export function RatesPage() {
                         </Button>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>
