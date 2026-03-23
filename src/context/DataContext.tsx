@@ -333,7 +333,12 @@ export function DataProvider({
       (x) => x.dispatch_date && x.dispatch_date.startsWith(String(year))
     ).length
     const challan_number = `CH-${year}-${String(sameYear + 1).padStart(3, "0")}`
-    const challan: Challan = { ...c, challan_id: generateId("ch"), challan_number }
+    const challan: Challan = {
+      ...c,
+      challan_id: generateId("ch"),
+      challan_number,
+      created_at: c.created_at ?? new Date().toISOString(),
+    }
     setState((s) => ({ ...s, challans: [...s.challans, challan] }))
     return challan
   }

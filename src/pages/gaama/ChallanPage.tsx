@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Challan, ChallanItem, GRN } from "@/lib/gaama-types"
-import { FileText, Plus, Search, Printer, Download, Eye, Pencil } from "lucide-react"
+import { FileText, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
@@ -134,15 +134,6 @@ export function ChallanPage() {
       (g) => g.grn_id
     )
   }, [grns, grnIdsInChallans])
-
-  const toggleGrnSelection = (grnId: string) => {
-    setSelectedGrnIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(grnId)) next.delete(grnId)
-      else next.add(grnId)
-      return next
-    })
-  }
 
   const openCreateFromGrns = (grnIds: string[]) => {
     setSelectedGrnIds(new Set(grnIds))
@@ -371,32 +362,31 @@ export function ChallanPage() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-10">Select</TableHead>
-                          <TableHead>GRN No</TableHead>
                           <TableHead>Sales Order</TableHead>
+                          <TableHead>GRN No.</TableHead>
+                          <TableHead>Product Category</TableHead>
                           <TableHead>Customer</TableHead>
-                          <TableHead>Sub category</TableHead>
-                          <TableHead>Qty</TableHead>
+                          <TableHead>Quantity</TableHead>
+                          <TableHead>Units</TableHead>
                           <TableHead className="text-right">Action</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {pendingGrns.map((g) => (
                           <TableRow key={g.grn_id}>
-                            <TableCell>
-                              <input
-                                type="checkbox"
-                                checked={selectedGrnIds.has(g.grn_id)}
-                                onChange={() => toggleGrnSelection(g.grn_id)}
-                              />
-                            </TableCell>
-                            <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
                             <TableCell>{g.sales_order_number ?? "—"}</TableCell>
+                            <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
+                            <TableCell>{g.category_name ?? "—"}</TableCell>
                             <TableCell>{g.customer_name ?? "—"}</TableCell>
-                            <TableCell>{g.product_name ?? g.category_name ?? "—"}</TableCell>
-                            <TableCell>{g.received_quantity ?? "—"} {g.unit ?? ""}</TableCell>
+                            <TableCell>{g.received_quantity ?? "—"}</TableCell>
+                            <TableCell>{g.unit ?? "—"}</TableCell>
                             <TableCell className="text-right">
-                              <Button variant="outline" size="sm" onClick={() => openCreateFromGrns([g.grn_id])}>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-md shadow-none"
+                                onClick={() => openCreateFromGrns([g.grn_id])}
+                              >
                                 Create Challan
                               </Button>
                             </TableCell>
@@ -404,17 +394,6 @@ export function ChallanPage() {
                         ))}
                       </TableBody>
                     </Table>
-                    <div className="p-2 border-t">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        disabled={selectedGrnIds.size === 0}
-                        onClick={() => openCreateFromGrns(Array.from(selectedGrnIds))}
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Create Challan from selected ({selectedGrnIds.size})
-                      </Button>
-                    </div>
                   </div>
                 )}
               </>
@@ -452,12 +431,15 @@ export function ChallanPage() {
                             onClick={() =>
                               exportChallansToCsv(
                                 filteredChallans.map((c) => ({
-                                  "Challan No": c.challan_number ?? c.challan_id,
+                                  "Challan Number": c.challan_number ?? c.challan_id,
+                                  "Sales Order": c.sales_order_number ?? "",
+                                  "GRN No.": c.grn_numbers ?? "",
+                                  "Product Category": c.product_category ?? "",
                                   Customer: c.customer_name ?? "",
-                                  "GRN Numbers": c.grn_numbers ?? "",
-                                  "Dispatch Date": c.dispatch_date?.slice(0, 10) ?? "",
-                                  Status: c.status ?? "",
-                                  "Total Amount": c.total_amount ?? "",
+                                  "Created Date/Time":
+                                    (c.created_at ?? c.dispatch_date)?.slice(0, 19).replace("T", " ") ?? "",
+                                  Quantity: c.quantity ?? "",
+                                  Units: c.units ?? "",
                                 })),
                                 `challans-${new Date().toISOString().slice(0, 10)}.csv`
                               )
@@ -503,26 +485,42 @@ export function ChallanPage() {
                         <Table>
                           <TableHeader>
                             <TableRow>
-                              <TableHead>Challan No</TableHead>
+                              <TableHead>Challan Number</TableHead>
+                              <TableHead>Sales Order</TableHead>
+                              <TableHead>GRN No.</TableHead>
+                              <TableHead>Product Category</TableHead>
                               <TableHead>Customer</TableHead>
-                              <TableHead>GRN Numbers</TableHead>
-                              <TableHead>Dispatch Date</TableHead>
-                              <TableHead>Status</TableHead>
-                              <TableHead className="text-right">Actions</TableHead>
+                              <TableHead>Created Date/Time</TableHead>
+                              <TableHead>Quantity</TableHead>
+                              <TableHead>Units</TableHead>
+                              <TableHead className="text-right">Action</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
                             {filteredChallans.map((c) => (
                               <TableRow key={c.challan_id}>
                                 <TableCell className="font-medium">{c.challan_number ?? c.challan_id}</TableCell>
+                                <TableCell>{c.sales_order_number ?? "—"}</TableCell>
+                                <TableCell className="max-w-[220px] truncate" title={c.grn_numbers ?? undefined}>
+                                  {c.grn_numbers ?? "—"}
+                                </TableCell>
+                                <TableCell>{c.product_category ?? "—"}</TableCell>
                                 <TableCell>{c.customer_name ?? "—"}</TableCell>
-                                <TableCell className="max-w-[200px] truncate">{c.grn_numbers ?? "—"}</TableCell>
-                                <TableCell>{c.dispatch_date?.slice(0, 10) ?? "—"}</TableCell>
-                                <TableCell><Badge variant="secondary">{c.status ?? "—"}</Badge></TableCell>
+                                <TableCell className="whitespace-nowrap">
+                                  {(c.created_at ?? c.dispatch_date)?.slice(0, 19).replace("T", " ") ?? "—"}
+                                </TableCell>
+                                <TableCell>{c.quantity ?? "—"}</TableCell>
+                                <TableCell>{c.units ?? "—"}</TableCell>
                                 <TableCell className="text-right">
-                                  <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}>
+                                    <Eye className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}>
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}>
+                                    <Printer className="h-4 w-4" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}

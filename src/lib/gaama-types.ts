@@ -213,6 +213,10 @@ export interface GRN {
   radiation_unit?: string
   remarks?: string
   bin_description?: string
+  /** Quality / processing (read-only display on GRN form; optional in seed). */
+  inspection_status?: string
+  quality_remarks?: string
+  processing_instructions?: string
   sticker_range_start?: number
   sticker_range_end?: number
   stickers_printed?: boolean

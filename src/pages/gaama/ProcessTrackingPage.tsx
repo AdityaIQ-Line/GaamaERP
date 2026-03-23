@@ -13,6 +13,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -38,7 +39,8 @@ import { useData, canAccess } from "@/context/DataContext"
 import type { GRN, GRNStatus } from "@/lib/gaama-types"
 import { GitBranch, Search, Download } from "lucide-react"
 import { toast } from "sonner"
-import { latestOfDates, sortLatestFirst } from "@/lib/utils"
+import { Badge } from "@/components/ui/badge"
+import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 const PROCESS_STATUSES: { value: GRNStatus; label: string }[] = [
   { value: "In Progress", label: "In Progress" },
@@ -46,6 +48,17 @@ const PROCESS_STATUSES: { value: GRNStatus; label: string }[] = [
   { value: "Completed", label: "Completed" },
   { value: "Rejected", label: "Rejected" },
 ]
+
+function processTrackingStatusBadgeClassName(status: string | undefined): string {
+  const s = String(status ?? "")
+    .toLowerCase()
+    .replace(/_/g, " ")
+  if (s === "in progress") return "border-0 bg-primary/15 text-primary hover:bg-primary/15"
+  if (s === "hold") return "border-0 bg-amber-100 text-amber-950 hover:bg-amber-100"
+  if (s === "completed") return "border-0 bg-emerald-100 text-emerald-950 hover:bg-emerald-100"
+  if (s === "rejected") return "border-0 bg-destructive/15 text-destructive hover:bg-destructive/15"
+  return "border-0 bg-secondary text-secondary-foreground hover:bg-secondary"
+}
 
 function exportToCsv(rows: Array<Record<string, string | number>>, filename: string) {
   if (rows.length === 0) return
@@ -117,21 +130,14 @@ export function ProcessTrackingPage() {
     }))
   }, [processGrns, data])
 
-  const openStatusDialog = (g: GRN, next: GRNStatus) => {
+  const openProcessDetailDialog = (g: GRN) => {
     setUpdateModalGrnId(g.grn_id)
-    setUpdateStatus(next)
-    setUpdateRemarks("")
-  }
-
-  const handleRowStatusChange = (g: GRN, value: string) => {
-    const next = value as GRNStatus
-    if (next === g.status) return
-    if (next === "Hold" || next === "Rejected") {
-      openStatusDialog(g, next)
-      return
-    }
-    data.updateGRN(g.grn_id, { status: next })
-    toast.success("Status updated.")
+    const valid =
+      g.status && PROCESS_STATUSES.some((s) => s.value === g.status)
+        ? (g.status as GRNStatus)
+        : PROCESS_STATUSES[0].value
+    setUpdateStatus(valid)
+    setUpdateRemarks(g.remarks ?? "")
   }
 
   const handleUpdateSubmit = (e: React.FormEvent) => {
@@ -143,7 +149,10 @@ export function ProcessTrackingPage() {
       alert("Remarks are required for Hold and Rejected.")
       return
     }
-    data.updateGRN(updateModalGrnId, { status: updateStatus })
+    data.updateGRN(updateModalGrnId, {
+      status: updateStatus,
+      remarks: updateRemarks.trim() || undefined,
+    })
     if (updateStatus === "Rejected") {
       const now = new Date().toISOString()
       data.addGatePass({
@@ -166,17 +175,16 @@ export function ProcessTrackingPage() {
     toast.success("Status updated.")
   }
 
+  const modalGrn = updateModalGrnId ? data.getGRN(updateModalGrnId) : undefined
+
   const handleExport = () => {
-    const rows = filteredRows.map((g, i) => ({
-      "Sl.No": i + 1,
+    const rows = filteredRows.map((g) => ({
       "GRN No": g.grn_number ?? g.grn_id,
       "Sales Order No": g.sales_order_number ?? "",
-      "Product Category": g.category_name ?? "",
-      "Sub category": g.product_name ?? "",
+      "sub Category": g.product_name ?? "",
       Customer: g.customer_name ?? "",
       Quantity: g.received_quantity ?? "",
       Units: g.unit ?? "",
-      "Created At": g.created_at ?? g.received_date ?? "",
       Status: g.status ?? "",
     }))
     exportToCsv(rows, `process-tracking-${new Date().toISOString().slice(0, 10)}.csv`)
@@ -267,59 +275,45 @@ export function ProcessTrackingPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-12">Sl.No</TableHead>
                     <TableHead>GRN No</TableHead>
                     <TableHead>Sales Order No</TableHead>
-                    <TableHead>Product Category</TableHead>
-                    <TableHead>Sub category</TableHead>
+                    <TableHead>sub Category</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Units</TableHead>
-                    <TableHead>Created At</TableHead>
-                    <TableHead className="min-w-[160px]">Status</TableHead>
+                    <TableHead className="min-w-[140px]">Status</TableHead>
+                    <TableHead className="text-right w-[120px]">Action</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredRows.map((g, idx) => (
+                  {filteredRows.map((g) => (
                     <TableRow key={g.grn_id}>
-                      <TableCell>{idx + 1}</TableCell>
                       <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
                       <TableCell>{g.sales_order_number ?? "—"}</TableCell>
-                      <TableCell>{g.category_name ?? "—"}</TableCell>
                       <TableCell>{g.product_name ?? "—"}</TableCell>
                       <TableCell>{g.customer_name ?? "—"}</TableCell>
                       <TableCell>{g.received_quantity ?? "—"}</TableCell>
                       <TableCell>{g.unit ?? "—"}</TableCell>
                       <TableCell>
-                        {(g.created_at ?? g.received_date)?.slice(0, 19).replace("T", " ") ?? "—"}
-                      </TableCell>
-                      <TableCell>
-                        <Select
-                          value={
-                            g.status && PROCESS_STATUSES.some((s) => s.value === g.status)
-                              ? (g.status as string)
-                              : g.status
-                                ? (g.status as string)
-                                : PROCESS_STATUSES[0].value
-                          }
-                          onValueChange={(v) => handleRowStatusChange(g, v)}
+                        <Badge
+                          className={cn(
+                            "font-medium capitalize",
+                            processTrackingStatusBadgeClassName(g.status)
+                          )}
                         >
-                          <SelectTrigger className="w-[min(100%,11rem)]" size="sm">
-                            <SelectValue placeholder="Status" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {g.status && !PROCESS_STATUSES.some((s) => s.value === g.status) ? (
-                              <SelectItem value={g.status as string} disabled>
-                                {g.status} (current)
-                              </SelectItem>
-                            ) : null}
-                            {PROCESS_STATUSES.map((s) => (
-                              <SelectItem key={s.value} value={s.value}>
-                                {s.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                          {g.status ?? "—"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-md shadow-none"
+                          onClick={() => openProcessDetailDialog(g)}
+                        >
+                          Update
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -330,55 +324,111 @@ export function ProcessTrackingPage() {
         )}
       </div>
 
-      <Dialog open={updateModalGrnId !== null} onOpenChange={(open) => !open && setUpdateModalGrnId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Update status</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleUpdateSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select
-                  value={updateStatus}
-                  onValueChange={(v) => setUpdateStatus(v as GRNStatus)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {PROCESS_STATUSES.map((s) => (
-                      <SelectItem key={s.value} value={s.value}>
-                        {s.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+      <Dialog
+        open={updateModalGrnId !== null}
+        onOpenChange={(open) => {
+          if (!open) setUpdateModalGrnId(null)
+        }}
+      >
+        <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[500px] sm:rounded-md">
+          {!modalGrn ? (
+            <div className="px-6 py-8">
+              <DialogHeader>
+                <DialogTitle>Update</DialogTitle>
+                <DialogDescription>This GRN record is no longer available.</DialogDescription>
+              </DialogHeader>
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-4 rounded-md shadow-none"
+                onClick={() => setUpdateModalGrnId(null)}
+              >
+                Close
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleUpdateSubmit}>
+              <div className="space-y-2 border-b border-border px-6 pt-6 pb-4">
+                <DialogHeader className="gap-2 text-left">
+                  <DialogTitle className="text-lg font-semibold leading-tight">
+                    Update | {modalGrn.grn_number ?? modalGrn.grn_id}
+                  </DialogTitle>
+                  <DialogDescription>
+                    Update the processing status and add remarks for this GRN record
+                  </DialogDescription>
+                </DialogHeader>
               </div>
-              {(updateStatus === "Hold" || updateStatus === "Rejected") && (
-                <div className="space-y-2">
-                  <Label>Remarks *</Label>
+
+              <div className="space-y-4 px-6 py-4">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-foreground">Sales Order Number</Label>
+                  <Input
+                    readOnly
+                    value={modalGrn.sales_order_number ?? modalGrn.sales_order_id ?? "—"}
+                    className="h-9 cursor-not-allowed rounded-md border-transparent bg-muted text-muted-foreground opacity-90"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-foreground">Status</Label>
+                  <Select value={updateStatus} onValueChange={(v) => setUpdateStatus(v as GRNStatus)}>
+                    <SelectTrigger className="h-9 w-full rounded-md shadow-none">
+                      <SelectValue placeholder="Select status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {modalGrn.status &&
+                      !PROCESS_STATUSES.some((s) => s.value === modalGrn.status) ? (
+                        <SelectItem value={modalGrn.status as string} disabled>
+                          {modalGrn.status} (current)
+                        </SelectItem>
+                      ) : null}
+                      {PROCESS_STATUSES.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>
+                          {s.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium text-foreground">Remarks</Label>
                   <Textarea
                     value={updateRemarks}
                     onChange={(e) => setUpdateRemarks(e.target.value)}
-                    placeholder="Required for Hold and Rejected"
-                    rows={3}
+                    placeholder="Add remarks (optional)"
+                    rows={4}
+                    className="min-h-[100px] resize-none rounded-md"
                   />
                 </div>
-              )}
-              {updateStatus === "Rejected" && (
-                <p className="text-sm text-muted-foreground">
-                  A Defect Gate Pass will be created when you save.
-                </p>
-              )}
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setUpdateModalGrnId(null)}>
-                Cancel
-              </Button>
-              <Button type="submit">Update</Button>
-            </DialogFooter>
-          </form>
+                <div className="rounded-md border border-primary/25 bg-primary/5 px-3 py-3 text-sm text-primary">
+                  <p>
+                    Status will be automatically updated to &quot;In Progress&quot; when sent for processing.
+                  </p>
+                  {(updateStatus === "Hold" || updateStatus === "Rejected") && (
+                    <p className="mt-2 text-muted-foreground">
+                      Remarks are required for Hold and Rejected.
+                      {updateStatus === "Rejected"
+                        ? " A Defect Gate Pass will be created when you save."
+                        : ""}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <DialogFooter className="gap-2 border-t border-border bg-muted/30 px-6 py-4 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-md shadow-none"
+                  onClick={() => setUpdateModalGrnId(null)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" className="rounded-md shadow-none">
+                  Save Details
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </PageShell>

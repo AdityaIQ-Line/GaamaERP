@@ -11,13 +11,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -32,13 +25,6 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
   Empty,
   EmptyHeader,
   EmptyMedia,
@@ -48,10 +34,11 @@ import {
 import { useData, canAccess } from "@/context/DataContext"
 import { useLocation, useNavigate } from "react-router-dom"
 import type { GRN } from "@/lib/gaama-types"
-import { Plus, PackageCheck, Search, Printer, Send, Pencil } from "lucide-react"
+import { Eye, Plus, PackageCheck, Search, Printer, Send, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { PrintStickerDialog } from "@/components/patterns/print-sticker-dialog"
 import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
@@ -64,6 +51,16 @@ type GrnSoSummaryRow =
 function formatOrderStatusLabel(status: string | undefined): string {
   if (status == null || status === "") return "—"
   return String(status).replace(/_/g, " ")
+}
+
+function grnStatusBadgeClassName(status: string | undefined): string {
+  const s = String(status ?? "")
+    .toLowerCase()
+    .replace(/_/g, " ")
+  if (s === "pending") return "border-0 bg-amber-100 text-amber-950 hover:bg-amber-100"
+  if (s === "in progress") return "border-0 bg-primary/15 text-primary hover:bg-primary/15"
+  if (s === "completed") return "border-0 bg-emerald-100 text-emerald-950 hover:bg-emerald-100"
+  return "border-0 bg-secondary text-secondary-foreground hover:bg-secondary"
 }
 
 /** Split sub category text into badge labels (comma, semicolon, newline, or spaced pipe). */
@@ -115,50 +112,59 @@ export function GRNPage() {
   const customers = data.customers
   const orders = data.salesOrders
 
-  // Sales orders available for GRN: same customer, status not Completed/Cancelled, total received < SO quantity
-  const totalReceivedByOrder = React.useMemo(() => {
-    const map: Record<string, number> = {}
-    for (const g of data.grns) {
-      if (!g.sales_order_id) continue
-      const qty = parseFloat(g.received_quantity ?? "0") || 0
-      map[g.sales_order_id] = (map[g.sales_order_id] ?? 0) + qty
-    }
-    return map
-  }, [data.grns])
+  const selectedOrder = salesOrderId ? data.getSalesOrder(salesOrderId) : undefined
+  const editingGrn = mode === "edit" && selectedId ? data.getGRN(selectedId) : undefined
+  const snapshotGrn =
+    editingGrn ?? (mode === "view" && selectedId ? data.getGRN(selectedId) : undefined)
+  const selectedCategory = selectedOrder?.category_id
+    ? data.getCategory(selectedOrder.category_id)
+    : snapshotGrn?.category_id
+      ? data.getCategory(snapshotGrn.category_id)
+      : undefined
 
-  const availableOrders = React.useMemo(() => {
+  // Deep-link: view GRN, or open create with a sales order (Sales Order → GRN).
+  React.useEffect(() => {
+    const st = location.state as { openGrnId?: string; salesOrderId?: string } | null
+    if (!st) return
+    if (st.openGrnId) {
+      const g = data.getGRN(st.openGrnId)
+      if (g) openView(g)
+      navigate(location.pathname, { replace: true, state: {} })
+      return
+    }
+    if (st.salesOrderId) {
+      const so = data.getSalesOrder(st.salesOrderId)
+      if (so) {
+        setCustomerId(so.customer_id)
+        setSalesOrderId(so.sales_order_id)
+        setMode("create")
+      }
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.state])
+
+  // Create: auto-pick first open sales order for the selected customer.
+  React.useEffect(() => {
+    if (mode !== "create" || !customerId || salesOrderId) return
     const list = orders.filter((o) => {
       if (o.customer_id !== customerId) return false
       if (o.order_status === "Completed" || o.order_status === "Cancelled") return false
       const soQty = Number(o.quantity ?? o.items?.[0]?.quantity ?? 0) || 0
-      const received = totalReceivedByOrder[o.sales_order_id] ?? 0
+      const received =
+        data.grns
+          .filter((g) => g.sales_order_id === o.sales_order_id)
+          .reduce((s, g) => s + (parseFloat(g.received_quantity ?? "0") || 0), 0) ?? 0
       return received < soQty
     })
-    return sortLatestFirst(
+    const first = sortLatestFirst(
       list,
       (o) => latestOfDates(o.created_at, o.order_date),
       (o) => o.sales_order_id
-    )
-  }, [orders, customerId, totalReceivedByOrder])
+    )[0]
+    if (first) setSalesOrderId(first.sales_order_id)
+  }, [mode, customerId, salesOrderId, orders, data.grns])
 
-  const selectedOrder = salesOrderId ? data.getSalesOrder(salesOrderId) : undefined
-  const editingGrn = mode === "edit" && selectedId ? data.getGRN(selectedId) : undefined
-  const selectedCategory = selectedOrder?.category_id
-    ? data.getCategory(selectedOrder.category_id)
-    : editingGrn?.category_id
-      ? data.getCategory(editingGrn.category_id)
-      : undefined
-
-  // Open view when navigated with state.openGrnId (e.g. from Sales Order View > Linked GRNs > View)
-  React.useEffect(() => {
-    const openGrnId = (location.state as { openGrnId?: string } | null)?.openGrnId
-    if (!openGrnId) return
-    const g = data.getGRN(openGrnId)
-    if (g) openView(g)
-    navigate(location.pathname, { replace: true, state: {} })
-  }, [location.state])
-
-  // Auto-fill from Sales Order (create)
+  // Auto-fill from Sales Order (create) — most fields are read-only; user edits qty / weights only.
   React.useEffect(() => {
     if (!selectedOrder) return
     setRadiationDose(selectedCategory?.dose_count != null ? String(selectedCategory.dose_count) : "")
@@ -173,6 +179,15 @@ export function GRNPage() {
       }
       if (selectedOrder.net_weight) setNetWeight(selectedOrder.net_weight)
       if (selectedOrder.gross_weight) setGrossWeight(selectedOrder.gross_weight)
+      setCustomerChallanNumber((prev) =>
+        prev.trim()
+          ? prev
+          : `Ref-${selectedOrder.sales_order_number ?? selectedOrder.sales_order_id ?? "SO"}`
+      )
+      setReceivedBy((prev) => (prev.trim() ? prev : "Warehouse"))
+      setProcessingPriority((prev) => (prev.trim() ? prev : "Standard"))
+      setRemarks((prev) => (prev.trim() ? prev : (selectedOrder.notes ?? "")))
+      setReceivedDate(new Date().toISOString().slice(0, 10))
     }
   }, [selectedOrder, selectedCategory, mode])
 
@@ -184,6 +199,23 @@ export function GRNPage() {
   })()
   const gstAmount = (totalAmount * (parseFloat(gstPercentage) || 0)) / 100
   const totalWithGst = totalAmount + gstAmount
+
+  const activeGrnRecord =
+    selectedId && (mode === "edit" || mode === "view") ? data.getGRN(selectedId) : undefined
+  const inspectionStatusDisplay =
+    mode === "create"
+      ? "Pending"
+      : (activeGrnRecord?.inspection_status?.trim()
+          ? activeGrnRecord.inspection_status
+          : formatOrderStatusLabel(activeGrnRecord?.status as string | undefined))
+  const qualityRemarksDisplay = activeGrnRecord?.quality_remarks?.trim() || "—"
+  const processingInstructionsDisplay = activeGrnRecord?.processing_instructions?.trim() || "—"
+  const processingPriorityDisplay =
+    (processingPriority || activeGrnRecord?.processing_priority || "").trim() || "—"
+  const assignedBinDisplay = activeGrnRecord?.assigned_bin?.trim() || "—"
+  const binDescriptionDisplay =
+    (binDescription || activeGrnRecord?.bin_description || "").trim() || "—"
+  const remarksStorageDisplay = (remarks || activeGrnRecord?.remarks || "").trim() || "—"
 
   const closeGrnForm = React.useCallback(() => {
     setMode(null)
@@ -256,24 +288,20 @@ export function GRNPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!customerId) {
-      alert("Select a customer.")
+      alert("No customer is set. Add customers in master data, or open Create GRN from a Sales Order.")
       return
     }
     if (!salesOrderId) {
-      alert("Select a Sales Order.")
+      alert("No sales order is linked. Use Go to GRN from a Sales Order or ensure an open order exists for the default customer.")
       return
     }
     if (!customerChallanNumber.trim()) {
-      alert("Customer Challan Number is required.")
+      alert("Customer challan reference is missing. Select a sales order to auto-fill.")
       return
     }
     const qty = parseFloat(receivedQuantity) || 0
     if (qty <= 0) {
       alert("Received Quantity must be greater than 0.")
-      return
-    }
-    if (!receivedBy.trim()) {
-      alert("Received By is required.")
       return
     }
     if (!netWeight.trim() || !grossWeight.trim()) {
@@ -314,11 +342,12 @@ export function GRNPage() {
       gst_percentage: gstPercentage || undefined,
       gst_amount: rate ? String(gstAmount.toFixed(2)) : undefined,
       total_amount: rate ? String(totalWithGst.toFixed(2)) : undefined,
-      received_by: receivedBy.trim(),
+      received_by: receivedBy.trim() || "Warehouse",
       radiation_dose: radiationDose || undefined,
       radiation_unit: radiationUnit,
       remarks: remarks || undefined,
       bin_description: binDescription || undefined,
+      inspection_status: "Pending",
     })
     closeGrnForm()
     toast.success("GRN created.")
@@ -328,6 +357,10 @@ export function GRNPage() {
     e.preventDefault()
     if (!selectedId) return
     const qty = parseFloat(receivedQuantity) || 0
+    if (qty <= 0) {
+      alert("Received Quantity must be greater than 0.")
+      return
+    }
     if (!netWeight.trim() || !grossWeight.trim()) {
       alert("Net weight and gross weight are required.")
       return
@@ -339,22 +372,9 @@ export function GRNPage() {
       return
     }
     data.updateGRN(selectedId, {
-      customer_challan_number: customerChallanNumber,
-      purchase_order_date: purchaseOrderDate ? new Date(purchaseOrderDate).toISOString().slice(0, 10) : undefined,
       received_quantity: String(qty),
-      received_by: receivedBy,
       net_weight: netWeight || undefined,
       gross_weight: grossWeight || undefined,
-      radiation_dose: radiationDose || undefined,
-      radiation_unit: radiationUnit,
-      remarks: remarks || undefined,
-      rate: rate || undefined,
-      pricing: rate ? String(totalAmount) : undefined,
-      gst_percentage: gstPercentage || undefined,
-      gst_amount: rate ? String(gstAmount.toFixed(2)) : undefined,
-      total_amount: rate ? String(totalWithGst.toFixed(2)) : undefined,
-      processing_priority: processingPriority || undefined,
-      bin_description: binDescription || undefined,
     })
     closeGrnForm()
     toast.success("GRN updated.")
@@ -372,7 +392,12 @@ export function GRNPage() {
     }
   }
 
-  const isView = mode === "view"
+  const printStickerGrn = printStickerId ? data.getGRN(printStickerId) : undefined
+  const printStickerSo =
+    printStickerGrn?.sales_order_id != null
+      ? data.getSalesOrder(printStickerGrn.sales_order_id)
+      : undefined
+
   const filteredGrns = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
     const list = grns.filter(
@@ -396,14 +421,15 @@ export function GRNPage() {
       ? `${selectedOrder.sticker_range_start} to ${selectedOrder.sticker_range_end}`
       : "—"
   const grnStickerRangeDisplay =
-    editingGrn?.sticker_range_start != null && editingGrn?.sticker_range_end != null
-      ? `${editingGrn.sticker_range_start} to ${editingGrn.sticker_range_end}`
+    snapshotGrn?.sticker_range_start != null && snapshotGrn?.sticker_range_end != null
+      ? `${snapshotGrn.sticker_range_start} to ${snapshotGrn.sticker_range_end}`
       : "—"
 
-  const selectTriggerPencil =
-    "h-9 w-full rounded-lg border border-input bg-muted/50 shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
   const inputPencil = "h-9 rounded-lg border border-input bg-background"
   const inputPencilMuted = "h-9 rounded-lg border-transparent bg-muted"
+  const readOnlyFieldClass = cn(inputPencilMuted, "cursor-not-allowed text-muted-foreground opacity-90")
+  const readOnlyTextareaClass =
+    "min-h-[88px] w-full cursor-not-allowed resize-none rounded-lg border border-transparent bg-muted px-3 py-2 text-sm text-muted-foreground opacity-90"
 
   const renderSoSummaryCell = (row: GrnSoSummaryRow) => (
     <div key={row.label} className="space-y-1 min-w-0">
@@ -436,7 +462,8 @@ export function GRNPage() {
     </div>
   )
 
-  const useFullGrnLayout = mode === "create" || mode === "edit"
+  const useFullGrnLayout = mode === "create" || mode === "edit" || mode === "view"
+  const canEditQtyWeights = mode === "create" || mode === "edit"
 
   const grnEditorForm = (
     <form
@@ -452,77 +479,43 @@ export function GRNPage() {
     >
       {useFullGrnLayout ? (
         <>
-          {/* Card: Select Customer & Sales Order — matches Pencil node 4f5Wf; edit: read-only (same data as create) */}
+          {/* Customer & Sales Order (read-only on create/edit) */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
-            <h2 className="text-base font-semibold text-foreground">Select Customer &amp; Sales Order</h2>
-            {mode === "create" ? (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-foreground">
-                    <span className="text-destructive">*</span> Customer Name
-                  </Label>
-                  <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setSalesOrderId(""); }}>
-                    <SelectTrigger className={selectTriggerPencil}>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.customer_id} value={c.customer_id}>
-                          {c.customer_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-foreground">
-                    <span className="text-destructive">*</span> Sales Order Number
-                  </Label>
-                  <Select value={salesOrderId} onValueChange={setSalesOrderId}>
-                    <SelectTrigger className={selectTriggerPencil}>
-                      <SelectValue placeholder="Select sales order" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableOrders.map((o) => (
-                        <SelectItem key={o.sales_order_id} value={o.sales_order_id}>
-                          {o.sales_order_number ?? o.order_number} ({o.product_name ?? o.category_name})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+            <h2 className="text-base font-semibold text-foreground">Customer &amp; Sales Order</h2>
+            <p className="text-sm text-muted-foreground">
+              {mode === "create"
+                ? "Customer and order are fixed from your entry point (default customer and first open order, or Sales Order → GRN)."
+                : mode === "view"
+                  ? "Read-only GRN record."
+                  : "Linked to this GRN (read-only)."}
+            </p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-foreground">Customer Name</Label>
+                <Input
+                  readOnly
+                  value={
+                    data.getCustomer(customerId)?.customer_name ??
+                    data.getGRN(selectedId ?? "")?.customer_name ??
+                    "—"
+                  }
+                  className={readOnlyFieldClass}
+                />
               </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-foreground">Customer Name</Label>
-                  <Input
-                    readOnly
-                    value={
-                      data.getCustomer(customerId)?.customer_name ??
-                      data.getGRN(selectedId ?? "")?.customer_name ??
-                      "—"
-                    }
-                    className={cn(inputPencilMuted, "text-muted-foreground")}
-                  />
-                  <p className="text-xs text-muted-foreground">Linked to this GRN (read-only)</p>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-foreground">Sales Order Number</Label>
-                  <Input
-                    readOnly
-                    value={
-                      selectedOrder?.sales_order_number ??
-                      selectedOrder?.order_number ??
-                      data.getGRN(selectedId ?? "")?.sales_order_number ??
-                      "—"
-                    }
-                    className={cn(inputPencilMuted, "text-muted-foreground")}
-                  />
-                  <p className="text-xs text-muted-foreground">Linked to this GRN (read-only)</p>
-                </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-medium text-foreground">Sales Order Number</Label>
+                <Input
+                  readOnly
+                  value={
+                    selectedOrder?.sales_order_number ??
+                    selectedOrder?.order_number ??
+                    data.getGRN(selectedId ?? "")?.sales_order_number ??
+                    "—"
+                  }
+                  className={readOnlyFieldClass}
+                />
               </div>
-            )}
+            </div>
 
             {selectedOrder ? (
               <div className="rounded-[10px] border border-primary/25 bg-primary/5 p-3 md:p-4 space-y-3">
@@ -603,7 +596,7 @@ export function GRNPage() {
                   ).map(renderSoSummaryCell)}
                 </div>
               </div>
-            ) : editingGrn ? (
+            ) : snapshotGrn ? (
               <div className="rounded-[10px] border border-primary/25 bg-primary/5 p-3 md:p-4 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold text-foreground">Sales Order Information</h3>
@@ -620,8 +613,8 @@ export function GRNPage() {
                       {
                         label: "Sales Order No.",
                         value:
-                          editingGrn.sales_order_number ??
-                          editingGrn.sales_order_id ??
+                          snapshotGrn.sales_order_number ??
+                          snapshotGrn.sales_order_id ??
                           "—",
                       },
                       { label: "Order Date", value: "—" },
@@ -630,28 +623,28 @@ export function GRNPage() {
                       {
                         label: "Customer Name",
                         value:
-                          editingGrn.customer_name ??
-                          data.getCustomer(editingGrn.customer_id ?? "")?.customer_name ??
+                          snapshotGrn.customer_name ??
+                          data.getCustomer(snapshotGrn.customer_id ?? "")?.customer_name ??
                           "—",
                       },
                       {
                         label: "Sub category",
-                        badgeValues: parseSubCategoryLabels(editingGrn.product_name),
+                        badgeValues: parseSubCategoryLabels(snapshotGrn.product_name),
                       },
-                      { label: "Product Category", value: editingGrn.category_name ?? "—" },
+                      { label: "Product Category", value: snapshotGrn.category_name ?? "—" },
                       { label: "Order Basis", value: "—" },
                       {
                         label: "Measurement / Unit",
-                        value: editingGrn.unit ?? "—",
+                        value: snapshotGrn.unit ?? "—",
                       },
                       { label: "Total Ordered Quantity", value: "—" },
                       {
                         label: "Net Weight (SO)",
-                        value: editingGrn.net_weight ?? "—",
+                        value: snapshotGrn.net_weight ?? "—",
                       },
                       {
                         label: "Gross Weight (SO)",
-                        value: editingGrn.gross_weight ?? "—",
+                        value: snapshotGrn.gross_weight ?? "—",
                       },
                       {
                         label: "Sticker Range (Mapped)",
@@ -660,31 +653,29 @@ export function GRNPage() {
                       {
                         label: "Rate / Unit (SO)",
                         value:
-                          editingGrn.rate != null && editingGrn.rate !== ""
-                            ? `₹${editingGrn.rate}`
+                          snapshotGrn.rate != null && snapshotGrn.rate !== ""
+                            ? `₹${snapshotGrn.rate}`
                             : "—",
                       },
                       {
                         label: "Order Value (₹)",
                         value:
-                          editingGrn.total_amount != null && editingGrn.total_amount !== ""
-                            ? Number(editingGrn.total_amount).toLocaleString("en-IN")
+                          snapshotGrn.total_amount != null && snapshotGrn.total_amount !== ""
+                            ? Number(snapshotGrn.total_amount).toLocaleString("en-IN")
                             : "—",
                       },
                     ] satisfies GrnSoSummaryRow[]
                   ).map(renderSoSummaryCell)}
                 </div>
               </div>
-            ) : mode === "create" && customerId ? (
+            ) : mode === "create" && customerId && !salesOrderId ? (
               <p className="text-sm text-muted-foreground rounded-[10px] border border-dashed border-border bg-muted/30 px-4 py-3">
-                Select a <span className="font-medium text-foreground">Sales Order Number</span> to load sales
-                order details and GRN entry fields.
+                No open sales order with remaining quantity for this customer. Create or complete a sales order
+                first, or use <span className="font-medium text-foreground">Go to GRN</span> from a specific order.
               </p>
             ) : null}
           </div>
 
-          {useFullGrnLayout ? (
-            <>
           {/* Card: GRN Details */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-6 shadow-sm">
             <h2 className="text-lg font-semibold text-foreground">GRN Details</h2>
@@ -710,13 +701,13 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">Purchase Order Date</Label>
-                <Input type="date" value={purchaseOrderDate} onChange={(e) => setPurchaseOrderDate(e.target.value)} className={inputPencil} />
+                <Input type="date" readOnly value={purchaseOrderDate} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Customer Challan Number
                 </Label>
-                <Input value={customerChallanNumber} onChange={(e) => setCustomerChallanNumber(e.target.value)} className={inputPencil} />
+                <Input readOnly value={customerChallanNumber} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">Radiation Dose (Auto-filled)</Label>
@@ -728,7 +719,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">Received Date</Label>
-                <Input type="date" value={receivedDate} onChange={(e) => setReceivedDate(e.target.value)} className={inputPencil} />
+                <Input type="date" readOnly value={receivedDate} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
@@ -737,19 +728,20 @@ export function GRNPage() {
                 <Input
                   type="number"
                   min={0}
+                  readOnly={!canEditQtyWeights}
                   value={receivedQuantity}
                   onChange={(e) => setReceivedQuantity(e.target.value)}
                   placeholder={
                     selectedOrder ? `Max: ${soOrderedQty} ${soUnitLabel}` : "Enter quantity"
                   }
-                  className={inputPencil}
+                  className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
                 />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Received By
                 </Label>
-                <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} className={inputPencil} />
+                <Input readOnly value={receivedBy} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
@@ -759,9 +751,10 @@ export function GRNPage() {
                   type="number"
                   min={0}
                   step="any"
+                  readOnly={!canEditQtyWeights}
                   value={netWeight}
                   onChange={(e) => setNetWeight(e.target.value)}
-                  className={inputPencil}
+                  className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
                 />
               </div>
               <div className="space-y-1 min-w-0">
@@ -772,366 +765,351 @@ export function GRNPage() {
                   type="number"
                   min={0}
                   step="any"
+                  readOnly={!canEditQtyWeights}
                   value={grossWeight}
                   onChange={(e) => setGrossWeight(e.target.value)}
-                  className={inputPencil}
+                  className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
                 />
                 <p className="text-xs text-muted-foreground">Must be &gt;= Net Weight</p>
               </div>
             </div>
+          </div>
+
+          {/* Quality & processing (read-only) — Pencil G1ZMe */}
+          <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
+            <h2 className="text-lg font-semibold text-foreground">Quality &amp; Processing Details</h2>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Inspection Status</Label>
+                <Input readOnly value={inspectionStatusDisplay} className={readOnlyFieldClass} />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">Processing Priority</Label>
+                <Input readOnly value={processingPriorityDisplay} className={readOnlyFieldClass} />
+              </div>
+            </div>
             <div className="space-y-1">
-              <Label className="text-xs font-medium">Remarks</Label>
-              <Textarea
-                value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
-                rows={4}
-                className="min-h-[100px] rounded-lg border border-input bg-background resize-y"
-              />
+              <Label className="text-sm font-medium">Quality Remarks</Label>
+              <Textarea readOnly value={qualityRemarksDisplay} rows={4} className={readOnlyTextareaClass} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Processing Instructions</Label>
+              <Textarea readOnly value={processingInstructionsDisplay} rows={4} className={readOnlyTextareaClass} />
             </div>
           </div>
 
-          {/* Card: Pricing & GST */}
+          {/* Pricing & GST (read-only) — Pencil UxqmB */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold text-foreground">Pricing &amp; GST Details</h2>
-            <p className="text-sm text-muted-foreground">
-              Pricing information will be auto-fetched when creating Challan. Rate per unit is optional.
-            </p>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Rate per Unit (₹) <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                  placeholder="Enter rate"
-                  className={inputPencilMuted}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">Amount (₹)</Label>
+                <Label className="text-sm font-medium">Total Amount (₹)</Label>
                 <Input
                   readOnly
-                  value={rate ? totalAmount.toFixed(2) : ""}
-                  placeholder="Enter amount"
-                  className={cn(inputPencilMuted, "text-muted-foreground")}
+                  value={rate ? totalAmount.toFixed(2) : "—"}
+                  className={readOnlyFieldClass}
                 />
               </div>
               <div className="space-y-1">
-                <Label className="text-sm font-medium">
-                  <span className="text-destructive">*</span> GST Rate (%)
-                </Label>
-                <Select value={gstPercentage} onValueChange={setGstPercentage}>
-                  <SelectTrigger className={selectTriggerPencil}>
-                    <SelectValue placeholder="Select GST %" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {["0", "5", "12", "18", "28"].map((g) => (
-                      <SelectItem key={g} value={g}>
-                        {g}%
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm font-medium">GST Rate (%)</Label>
+                <Input readOnly value={gstPercentage ? `${gstPercentage}%` : "—"} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1">
                 <Label className="text-sm font-medium">GST Amount (₹)</Label>
                 <Input
                   readOnly
-                  value={rate ? gstAmount.toFixed(2) : ""}
-                  placeholder="Calculated automatically"
-                  className={cn(inputPencilMuted, !rate && "text-muted-foreground")}
+                  value={rate ? gstAmount.toFixed(2) : "—"}
+                  className={readOnlyFieldClass}
                 />
               </div>
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Total with GST (₹)</Label>
                 <Input
                   readOnly
-                  value={rate ? totalWithGst.toFixed(2) : ""}
-                  placeholder="Calculated automatically"
-                  className={cn(inputPencilMuted, "font-semibold", !rate && "text-muted-foreground font-normal")}
+                  value={rate ? totalWithGst.toFixed(2) : "—"}
+                  className={cn(readOnlyFieldClass, rate ? "font-semibold" : "")}
                 />
               </div>
             </div>
           </div>
 
-          {/* Card: Processing & Storage */}
+          {/* Processing & storage (read-only) — Pencil XaNZK */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold text-foreground">Processing &amp; Storage Details</h2>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Processing Priority</Label>
-                <Select value={processingPriority || "__none__"} onValueChange={(v) => setProcessingPriority(v === "__none__" ? "" : v)}>
-                  <SelectTrigger className={selectTriggerPencil}>
-                    <SelectValue placeholder="Select priority" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">—</SelectItem>
-                    <SelectItem value="Standard">Standard</SelectItem>
-                    <SelectItem value="Normal">Normal</SelectItem>
-                    <SelectItem value="High">High</SelectItem>
-                    <SelectItem value="Urgent">Urgent</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label className="text-sm font-medium">Assigned BIN ID</Label>
+                <Input readOnly value={assignedBinDisplay} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Storage BIN Description</Label>
-                <Input
-                  value={binDescription}
-                  onChange={(e) => setBinDescription(e.target.value)}
-                  placeholder="Enter bin description for clarity"
-                  className={inputPencilMuted}
-                />
+                <Label className="text-sm font-medium">BIN Description</Label>
+                <Input readOnly value={binDescriptionDisplay} className={readOnlyFieldClass} />
               </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Remarks</Label>
+              <Textarea readOnly value={remarksStorageDisplay} rows={4} className={readOnlyTextareaClass} />
             </div>
           </div>
 
-          <div className="flex justify-end gap-2 pt-1">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                if (!window.confirm("Discard changes?")) return
-                closeGrnForm()
-              }}
-            >
-              Cancel
-            </Button>
-            <Button type="submit" variant="default" className="h-9 rounded-lg px-8 font-medium shadow-none">
-              {mode === "create" ? "Create GRN" : "Save changes"}
-            </Button>
-          </div>
-            </>
+          {canEditQtyWeights ? (
+            <div className="flex justify-end gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-9 rounded-md shadow-none"
+                onClick={() => {
+                  if (!window.confirm("Discard changes?")) return
+                  closeGrnForm()
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="default" className="h-9 rounded-md px-8 font-medium shadow-none">
+                {mode === "create" ? "Create GRN" : "Save changes"}
+              </Button>
+            </div>
           ) : null}
         </>
       ) : (
         <>
-          <FormSection title="Section 1 – Customer & Sales Order" noSeparator>
+          <FormSection title="Customer & Sales Order" noSeparator>
             <div className="space-y-4 py-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Customer *</Label>
-                  <Select value={customerId} onValueChange={(v) => { setCustomerId(v); setSalesOrderId(""); }} disabled={isView}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.customer_id} value={c.customer_id}>
-                          {c.customer_name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Customer</Label>
+                  <Input
+                    readOnly
+                    value={
+                      data.getCustomer(customerId)?.customer_name ??
+                      data.getGRN(selectedId ?? "")?.customer_name ??
+                      "—"
+                    }
+                    className={readOnlyFieldClass}
+                  />
                 </div>
                 <div className="space-y-2">
-                  <Label>Sales Order *</Label>
-                  <Select value={salesOrderId} onValueChange={setSalesOrderId} disabled={isView}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select sales order" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableOrders.map((o) => (
-                        <SelectItem key={o.sales_order_id} value={o.sales_order_id}>
-                          {o.sales_order_number ?? o.order_number} ({o.product_name ?? o.category_name})
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label>Sales Order</Label>
+                  <Input
+                    readOnly
+                    value={
+                      selectedOrder?.sales_order_number ??
+                      selectedOrder?.order_number ??
+                      data.getGRN(selectedId ?? "")?.sales_order_number ??
+                      "—"
+                    }
+                    className={readOnlyFieldClass}
+                  />
                 </div>
               </div>
               {selectedOrder && (
                 <p className="text-sm text-muted-foreground">
-                  Sub category: {selectedOrder.product_name ?? selectedOrder.category_name} • Category: {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
+                  Sub category: {selectedOrder.product_name ?? selectedOrder.category_name} • Category:{" "}
+                  {selectedOrder.category_name} • Unit: {selectedOrder.unit ?? "—"}
                 </p>
               )}
             </div>
           </FormSection>
 
-          <FormSection title="Section 2 – GRN Details" noSeparator>
+          <FormSection title="GRN Details" noSeparator>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>GRN Number</Label>
-                <Input
-                  value={data.getGRN(selectedId ?? "")?.grn_number ?? "—"}
-                  readOnly
-                  className="bg-muted"
-                />
+                <Input readOnly value={data.getGRN(selectedId ?? "")?.grn_number ?? "—"} className={readOnlyFieldClass} />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Customer Challan Number *</Label>
-                  <Input
-                    value={customerChallanNumber}
-                    onChange={(e) => setCustomerChallanNumber(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Label>Customer Challan Number</Label>
+                  <Input readOnly value={customerChallanNumber} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
                   <Label>Purchase Order Date</Label>
-                  <Input
-                    type="date"
-                    value={purchaseOrderDate}
-                    onChange={(e) => setPurchaseOrderDate(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Input type="date" readOnly value={purchaseOrderDate} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
                   <Label>Received Date</Label>
-                  <Input
-                    type="date"
-                    value={receivedDate}
-                    onChange={(e) => setReceivedDate(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Input type="date" readOnly value={receivedDate} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Received Quantity *</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={receivedQuantity}
-                    onChange={(e) => setReceivedQuantity(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Label>Received Quantity</Label>
+                  <Input type="number" readOnly value={receivedQuantity} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Received By *</Label>
-                  <Input
-                    value={receivedBy}
-                    onChange={(e) => setReceivedBy(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Label>Received By</Label>
+                  <Input readOnly value={receivedBy} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Net Weight (kg) *</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={netWeight}
-                    onChange={(e) => setNetWeight(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Label>Net Weight (kg)</Label>
+                  <Input type="number" readOnly value={netWeight} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
-                  <Label>Gross Weight (kg) *</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={grossWeight}
-                    onChange={(e) => setGrossWeight(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Label>Gross Weight (kg)</Label>
+                  <Input type="number" readOnly value={grossWeight} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
                   <Label>Radiation Dose</Label>
-                  <Input
-                    value={radiationDose}
-                    onChange={(e) => setRadiationDose(e.target.value)}
-                    readOnly={isView}
-                  />
+                  <Input readOnly value={radiationDose} className={readOnlyFieldClass} />
                 </div>
                 <div className="space-y-2">
                   <Label>Radiation Unit</Label>
-                  <Input value={radiationUnit} onChange={(e) => setRadiationUnit(e.target.value)} readOnly={isView} />
+                  <Input readOnly value={radiationUnit} className={readOnlyFieldClass} />
+                </div>
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Quality & Processing (read-only)" noSeparator>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Inspection Status</Label>
+                  <Input readOnly value={inspectionStatusDisplay} className={readOnlyFieldClass} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Processing Priority</Label>
+                  <Input readOnly value={processingPriorityDisplay} className={readOnlyFieldClass} />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Quality Remarks</Label>
+                <Textarea readOnly value={qualityRemarksDisplay} rows={3} className={readOnlyTextareaClass} />
+              </div>
+              <div className="space-y-2">
+                <Label>Processing Instructions</Label>
+                <Textarea readOnly value={processingInstructionsDisplay} rows={3} className={readOnlyTextareaClass} />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Pricing & GST (read-only)" noSeparator>
+            <div className="grid grid-cols-2 gap-4 py-4">
+              <div className="space-y-2">
+                <Label>Total Amount (₹)</Label>
+                <Input readOnly value={rate ? totalAmount.toFixed(2) : "—"} className={readOnlyFieldClass} />
+              </div>
+              <div className="space-y-2">
+                <Label>GST Rate</Label>
+                <Input readOnly value={gstPercentage ? `${gstPercentage}%` : "—"} className={readOnlyFieldClass} />
+              </div>
+              <div className="space-y-2">
+                <Label>GST Amount (₹)</Label>
+                <Input readOnly value={rate ? gstAmount.toFixed(2) : "—"} className={readOnlyFieldClass} />
+              </div>
+              <div className="space-y-2">
+                <Label>Total with GST (₹)</Label>
+                <Input readOnly value={rate ? totalWithGst.toFixed(2) : "—"} className={readOnlyFieldClass} />
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection title="Processing & Storage (read-only)" noSeparator>
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Assigned BIN ID</Label>
+                  <Input readOnly value={assignedBinDisplay} className={readOnlyFieldClass} />
+                </div>
+                <div className="space-y-2">
+                  <Label>BIN Description</Label>
+                  <Input readOnly value={binDescriptionDisplay} className={readOnlyFieldClass} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Remarks</Label>
-                <Textarea value={remarks} onChange={(e) => setRemarks(e.target.value)} readOnly={isView} />
+                <Textarea readOnly value={remarksStorageDisplay} rows={3} className={readOnlyTextareaClass} />
               </div>
             </div>
           </FormSection>
 
-          <FormSection title="Section 3 – Pricing & GST" noSeparator>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="space-y-2">
-                <Label>Rate (optional)</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  step="any"
-                  value={rate}
-                  onChange={(e) => setRate(e.target.value)}
-                  readOnly={isView}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Total Amount</Label>
-                <Input value={rate ? totalAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
-              </div>
-              <div className="space-y-2">
-                <Label>GST %</Label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={gstPercentage}
-                  onChange={(e) => setGstPercentage(e.target.value)}
-                  readOnly={isView}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>GST Amount</Label>
-                <Input value={rate ? gstAmount.toFixed(2) : "—"} readOnly className="bg-muted" />
-              </div>
-              <div className="space-y-2">
-                <Label>Total with GST</Label>
-                <Input value={rate ? totalWithGst.toFixed(2) : "—"} readOnly className="bg-muted" />
-              </div>
-            </div>
-          </FormSection>
-
-          <FormSection title="Section 4 – Processing" noSeparator>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="space-y-2">
-                <Label>Processing Priority</Label>
-                <Input
-                  value={processingPriority}
-                  onChange={(e) => setProcessingPriority(e.target.value)}
-                  readOnly={isView}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Bin Description</Label>
-                <Input
-                  value={binDescription}
-                  onChange={(e) => setBinDescription(e.target.value)}
-                  readOnly={isView}
-                />
-              </div>
-            </div>
-          </FormSection>
-
-          {isView && (
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={closeGrnForm}>
-                Close
-              </Button>
-            </DialogFooter>
-          )}
         </>
       )}
     </form>
   )
 
-  if (allowed && (mode === "create" || mode === "edit")) {
+  const viewHeaderGrn = mode === "view" && selectedId ? data.getGRN(selectedId) : undefined
+
+  if (allowed && (mode === "create" || mode === "edit" || mode === "view")) {
     return (
       <PageShell>
         <div className="flex-1 overflow-auto">
           <div className="w-full h-full">
             <PageHeaderWithBack
-              title={mode === "create" ? "Create GRN" : "Edit GRN"}
+              title={
+                mode === "create" ? "Create GRN" : mode === "edit" ? "Edit GRN" : "View GRN"
+              }
               noBorder
               backButton={{
                 onClick: () => {
+                  if (mode === "view") {
+                    closeGrnForm()
+                    return
+                  }
                   if (!window.confirm("Discard changes?")) return
                   closeGrnForm()
                 },
               }}
+              actions={
+                mode === "view" && viewHeaderGrn ? (
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-md shadow-none"
+                      onClick={() => openEdit(viewHeaderGrn)}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit GRN
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-md shadow-none"
+                      onClick={() => setPrintStickerId(viewHeaderGrn.grn_id)}
+                    >
+                      <Printer className="mr-2 h-4 w-4" />
+                      Print Sticker
+                    </Button>
+                    {viewHeaderGrn.status === "Pending" ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="rounded-md shadow-none"
+                        onClick={() => handleSendForProcessing(viewHeaderGrn.grn_id)}
+                      >
+                        <Send className="mr-2 h-4 w-4" />
+                        Send for Processing
+                      </Button>
+                    ) : null}
+                  </div>
+                ) : undefined
+              }
             />
+            {mode === "view" && viewHeaderGrn ? (
+              <div className="mx-6 mt-2 rounded-md bg-gradient-to-r from-primary to-primary/75 px-5 py-4 text-primary-foreground shadow-sm">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-wide text-primary-foreground/80">
+                      Goods Receipt Note
+                    </p>
+                    <h2 className="truncate text-xl font-semibold tracking-tight">
+                      {viewHeaderGrn.grn_number ?? viewHeaderGrn.grn_id}
+                    </h2>
+                    <p className="text-sm text-primary-foreground/90">
+                      Sales order:{" "}
+                      {viewHeaderGrn.sales_order_number ?? viewHeaderGrn.sales_order_id ?? "—"}
+                    </p>
+                  </div>
+                  <Badge className={cn("shrink-0 font-medium", grnStatusBadgeClassName(viewHeaderGrn.status))}>
+                    {formatOrderStatusLabel(viewHeaderGrn.status)}
+                  </Badge>
+                </div>
+              </div>
+            ) : null}
             <div className="space-y-4 px-6 py-4 h-full">{grnEditorForm}</div>
           </div>
         </div>
@@ -1149,20 +1127,15 @@ export function GRNPage() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-        <Dialog open={printStickerId !== null} onOpenChange={(open) => !open && setPrintStickerId(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Print Sticker</DialogTitle>
-            </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              Print sticker for GRN: {printStickerId ? data.getGRN(printStickerId)?.grn_number ?? printStickerId : ""}
-            </p>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setPrintStickerId(null)}>Cancel</Button>
-              <Button onClick={() => { window.print(); setPrintStickerId(null); }}><Printer className="h-4 w-4 mr-2" />Print</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <PrintStickerDialog
+          open={printStickerId !== null}
+          onOpenChange={(o) => {
+            if (!o) setPrintStickerId(null)
+          }}
+          grn={printStickerGrn}
+          salesOrder={printStickerSo}
+          siblingGrns={data.grns}
+        />
       </PageShell>
     )
   }
@@ -1209,13 +1182,13 @@ export function GRNPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>GRN No.</TableHead>
-                    <TableHead>Sales Order</TableHead>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Sub category</TableHead>
-                    <TableHead>Qty</TableHead>
-                    <TableHead>Received Date</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead>GRN Number</TableHead>
+                    <TableHead>Sales Order No</TableHead>
+                    <TableHead>Date of Receipt</TableHead>
+                    <TableHead>Customer Name</TableHead>
+                    <TableHead>Product Category</TableHead>
+                    <TableHead>Received Quantity</TableHead>
+                    <TableHead>Received By</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -1224,14 +1197,18 @@ export function GRNPage() {
                     <TableRow key={g.grn_id}>
                       <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
                       <TableCell>{g.sales_order_number ?? "—"}</TableCell>
-                      <TableCell>{g.customer_name ?? "—"}</TableCell>
-                      <TableCell>{g.product_name ?? g.category_name ?? "—"}</TableCell>
-                      <TableCell>{g.received_quantity ?? "—"} {g.unit ?? ""}</TableCell>
                       <TableCell>{g.received_date?.slice(0, 10) ?? "—"}</TableCell>
+                      <TableCell>{g.customer_name ?? "—"}</TableCell>
+                      <TableCell>{g.category_name ?? "—"}</TableCell>
                       <TableCell>
-                        <Badge variant="secondary">{g.status}</Badge>
+                        {g.received_quantity ?? "—"}
+                        {g.unit ? ` ${g.unit}` : ""}
                       </TableCell>
+                      <TableCell>{g.received_by?.trim() ? g.received_by : "—"}</TableCell>
                       <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" title="View" onClick={() => openView(g)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(g)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
@@ -1253,15 +1230,6 @@ export function GRNPage() {
         )}
       </div>
 
-      <Dialog open={mode === "view"} onOpenChange={(open) => !open && closeGrnForm()}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>GRN Details</DialogTitle>
-          </DialogHeader>
-          {grnEditorForm}
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog open={sendForProcessingId !== null} onOpenChange={(open) => !open && setSendForProcessingId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1277,20 +1245,15 @@ export function GRNPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={printStickerId !== null} onOpenChange={(open) => !open && setPrintStickerId(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Print Sticker</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            Print sticker for GRN: {printStickerId ? data.getGRN(printStickerId)?.grn_number ?? printStickerId : ""}
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPrintStickerId(null)}>Cancel</Button>
-            <Button onClick={() => { window.print(); setPrintStickerId(null); }}><Printer className="h-4 w-4 mr-2" />Print</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PrintStickerDialog
+        open={printStickerId !== null}
+        onOpenChange={(o) => {
+          if (!o) setPrintStickerId(null)
+        }}
+        grn={printStickerGrn}
+        salesOrder={printStickerSo}
+        siblingGrns={data.grns}
+      />
     </PageShell>
   )
 }
