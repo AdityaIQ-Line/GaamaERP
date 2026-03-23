@@ -52,13 +52,30 @@ import { Plus, PackageCheck, Search, Printer, Send, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
-import { cn } from "@/lib/utils"
+import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
+
+/** SO / GRN snapshot row: plain text or sub categories as badges (multi-value). */
+type GrnSoSummaryRow =
+  | { label: string; value: string }
+  | { label: string; badgeValues: string[] }
 
 function formatOrderStatusLabel(status: string | undefined): string {
   if (status == null || status === "") return "—"
   return String(status).replace(/_/g, " ")
+}
+
+/** Split sub category text into badge labels (comma, semicolon, newline, or spaced pipe). */
+function parseSubCategoryLabels(raw: string | undefined | null): string[] {
+  if (raw == null) return []
+  const s = String(raw).trim()
+  if (!s) return []
+  const parts = s
+    .split(/\s*(?:[,;\n]|\s\|\s)\s*/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+  return parts.length > 1 ? parts : [s]
 }
 
 export function GRNPage() {
@@ -90,7 +107,6 @@ export function GRNPage() {
   const [gstPercentage, setGstPercentage] = React.useState("18")
   const [processingPriority, setProcessingPriority] = React.useState("")
   const [binDescription, setBinDescription] = React.useState("")
-  const [vehicleNumber, setVehicleNumber] = React.useState("")
   const [sendForProcessingId, setSendForProcessingId] = React.useState<string | null>(null)
   const [printStickerId, setPrintStickerId] = React.useState<string | null>(null)
 
@@ -111,13 +127,18 @@ export function GRNPage() {
   }, [data.grns])
 
   const availableOrders = React.useMemo(() => {
-    return orders.filter((o) => {
+    const list = orders.filter((o) => {
       if (o.customer_id !== customerId) return false
       if (o.order_status === "Completed" || o.order_status === "Cancelled") return false
       const soQty = Number(o.quantity ?? o.items?.[0]?.quantity ?? 0) || 0
       const received = totalReceivedByOrder[o.sales_order_id] ?? 0
       return received < soQty
     })
+    return sortLatestFirst(
+      list,
+      (o) => latestOfDates(o.created_at, o.order_date),
+      (o) => o.sales_order_id
+    )
   }, [orders, customerId, totalReceivedByOrder])
 
   const selectedOrder = salesOrderId ? data.getSalesOrder(salesOrderId) : undefined
@@ -186,7 +207,6 @@ export function GRNPage() {
     setGstPercentage("18")
     setProcessingPriority("")
     setBinDescription("")
-    setVehicleNumber("")
     setSelectedId(null)
     setMode("create")
   }
@@ -208,7 +228,6 @@ export function GRNPage() {
     setGstPercentage(g.gst_percentage ?? "18")
     setProcessingPriority(g.processing_priority ?? "")
     setBinDescription(g.bin_description ?? "")
-    setVehicleNumber(g.vehicle_number ?? "")
     setSelectedId(g.grn_id)
     setMode("edit")
   }
@@ -230,7 +249,6 @@ export function GRNPage() {
     setGstPercentage(g.gst_percentage ?? "18")
     setProcessingPriority(g.processing_priority ?? "")
     setBinDescription(g.bin_description ?? "")
-    setVehicleNumber(g.vehicle_number ?? "")
     setSelectedId(g.grn_id)
     setMode("view")
   }
@@ -258,6 +276,16 @@ export function GRNPage() {
       alert("Received By is required.")
       return
     }
+    if (!netWeight.trim() || !grossWeight.trim()) {
+      alert("Net weight and gross weight are required.")
+      return
+    }
+    const net = parseFloat(netWeight)
+    const gross = parseFloat(grossWeight)
+    if (!isNaN(gross) && !isNaN(net) && gross < net) {
+      alert("Gross weight must be greater than or equal to net weight.")
+      return
+    }
 
     const order = data.getSalesOrder(salesOrderId)
     const cust = data.getCustomer(customerId)
@@ -273,7 +301,6 @@ export function GRNPage() {
       product_id: order?.product_id,
       product_name: order?.product_name,
       customer_challan_number: customerChallanNumber.trim(),
-      vehicle_number: vehicleNumber || undefined,
       received_quantity: String(qty),
       unit: order?.unit ?? "carton",
       net_weight: netWeight || undefined,
@@ -301,6 +328,16 @@ export function GRNPage() {
     e.preventDefault()
     if (!selectedId) return
     const qty = parseFloat(receivedQuantity) || 0
+    if (!netWeight.trim() || !grossWeight.trim()) {
+      alert("Net weight and gross weight are required.")
+      return
+    }
+    const net = parseFloat(netWeight)
+    const gross = parseFloat(grossWeight)
+    if (!isNaN(gross) && !isNaN(net) && gross < net) {
+      alert("Gross weight must be greater than or equal to net weight.")
+      return
+    }
     data.updateGRN(selectedId, {
       customer_challan_number: customerChallanNumber,
       purchase_order_date: purchaseOrderDate ? new Date(purchaseOrderDate).toISOString().slice(0, 10) : undefined,
@@ -318,7 +355,6 @@ export function GRNPage() {
       total_amount: rate ? String(totalWithGst.toFixed(2)) : undefined,
       processing_priority: processingPriority || undefined,
       bin_description: binDescription || undefined,
-      vehicle_number: vehicleNumber || undefined,
     })
     closeGrnForm()
     toast.success("GRN updated.")
@@ -337,14 +373,20 @@ export function GRNPage() {
   }
 
   const isView = mode === "view"
-  const filteredGrns = grns.filter((g) => {
+  const filteredGrns = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return (
-      (g.grn_number ?? g.grn_id).toLowerCase().includes(term) ||
-      (g.sales_order_number ?? "").toLowerCase().includes(term) ||
-      (g.customer_name ?? "").toLowerCase().includes(term)
+    const list = grns.filter(
+      (g) =>
+        (g.grn_number ?? g.grn_id).toLowerCase().includes(term) ||
+        (g.sales_order_number ?? "").toLowerCase().includes(term) ||
+        (g.customer_name ?? "").toLowerCase().includes(term)
     )
-  })
+    return sortLatestFirst(
+      list,
+      (g) => latestOfDates(g.received_date, g.created_at),
+      (g) => g.grn_id
+    )
+  }, [grns, searchTerm])
 
   const soOrderedQty =
     Number(selectedOrder?.quantity ?? selectedOrder?.items?.[0]?.quantity ?? 0) || 0
@@ -362,6 +404,37 @@ export function GRNPage() {
     "h-9 w-full rounded-lg border border-input bg-muted/50 shadow-none focus-visible:ring-1 focus-visible:ring-primary/30"
   const inputPencil = "h-9 rounded-lg border border-input bg-background"
   const inputPencilMuted = "h-9 rounded-lg border-transparent bg-muted"
+
+  const renderSoSummaryCell = (row: GrnSoSummaryRow) => (
+    <div key={row.label} className="space-y-1 min-w-0">
+      <Label className="text-xs font-medium text-muted-foreground">{row.label}</Label>
+      {"badgeValues" in row ? (
+        <div
+          className={cn(
+            inputPencil,
+            "flex h-auto min-h-8 flex-wrap items-center gap-1.5 py-1.5 text-sm opacity-90"
+          )}
+        >
+          {row.badgeValues.length === 0 ? (
+            <span className="px-1 text-muted-foreground">—</span>
+          ) : (
+            row.badgeValues.map((text, i) => (
+              <Badge
+                key={`${row.label}-${i}-${text}`}
+                variant="secondary"
+                className="max-w-full truncate font-normal"
+                title={text}
+              >
+                {text}
+              </Badge>
+            ))
+          )}
+        </div>
+      ) : (
+        <Input readOnly value={row.value} className={cn(inputPencil, "h-8 text-sm opacity-90 min-w-0")} />
+      )}
+    </div>
+  )
 
   const useFullGrnLayout = mode === "create" || mode === "edit"
 
@@ -461,73 +534,73 @@ export function GRNPage() {
                   Shown after you select a sales order. Use these values as reference when entering the GRN below.
                 </p>
                 <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                  {[
-                    {
-                      label: "Sales Order No.",
-                      value:
-                        selectedOrder.sales_order_number ??
-                        selectedOrder.order_number ??
-                        selectedOrder.sales_order_id,
-                    },
-                    { label: "Order Date", value: selectedOrder.order_date?.slice(0, 10) ?? "—" },
-                    {
-                      label: "Expected Delivery",
-                      value: selectedOrder.delivery_date?.slice(0, 10) ?? "—",
-                    },
-                    {
-                      label: "Order Status",
-                      value: formatOrderStatusLabel(selectedOrder.order_status as string | undefined),
-                    },
-                    {
-                      label: "Customer Name",
-                      value:
-                        selectedOrder.customer_name ??
-                        data.getCustomer(selectedOrder.customer_id)?.customer_name ??
-                        "—",
-                    },
-                    { label: "Sub category", value: selectedOrder.product_name ?? "—" },
-                    { label: "Product Category", value: selectedOrder.category_name ?? "—" },
-                    {
-                      label: "Order Basis",
-                      value: selectedOrder.order_basis ?? "—",
-                    },
-                    {
-                      label: "Measurement / Unit",
-                      value: [selectedOrder.measurement_type, selectedOrder.unit].filter(Boolean).join(" · ") || "—",
-                    },
-                    { label: "Total Ordered Quantity", value: String(soOrderedQty) },
-                    {
-                      label: "Net Weight (SO)",
-                      value: selectedOrder.net_weight ?? "—",
-                    },
-                    {
-                      label: "Gross Weight (SO)",
-                      value: selectedOrder.gross_weight ?? "—",
-                    },
-                    {
-                      label: "Sticker Range (Mapped)",
-                      value: stickerRangeDisplay,
-                    },
-                    {
-                      label: "Rate / Unit (SO)",
-                      value:
-                        selectedOrder.items?.[0]?.rate != null
-                          ? `₹${selectedOrder.items[0].rate}`
-                          : "—",
-                    },
-                    {
-                      label: "Order Value (₹)",
-                      value:
-                        selectedOrder.total_amount != null
-                          ? selectedOrder.total_amount.toLocaleString("en-IN")
-                          : "—",
-                    },
-                  ].map((row) => (
-                    <div key={row.label} className="space-y-1 min-w-0">
-                      <Label className="text-xs font-medium text-muted-foreground">{row.label}</Label>
-                      <Input readOnly value={row.value} className={cn(inputPencil, "h-8 text-sm opacity-90 min-w-0")} />
-                    </div>
-                  ))}
+                  {(
+                    [
+                      {
+                        label: "Sales Order No.",
+                        value:
+                          selectedOrder.sales_order_number ??
+                          selectedOrder.order_number ??
+                          selectedOrder.sales_order_id,
+                      },
+                      { label: "Order Date", value: selectedOrder.order_date?.slice(0, 10) ?? "—" },
+                      {
+                        label: "Expected Delivery",
+                        value: selectedOrder.delivery_date?.slice(0, 10) ?? "—",
+                      },
+                      {
+                        label: "Order Status",
+                        value: formatOrderStatusLabel(selectedOrder.order_status as string | undefined),
+                      },
+                      {
+                        label: "Customer Name",
+                        value:
+                          selectedOrder.customer_name ??
+                          data.getCustomer(selectedOrder.customer_id)?.customer_name ??
+                          "—",
+                      },
+                      {
+                        label: "Sub category",
+                        badgeValues: parseSubCategoryLabels(selectedOrder.product_name),
+                      },
+                      { label: "Product Category", value: selectedOrder.category_name ?? "—" },
+                      {
+                        label: "Order Basis",
+                        value: selectedOrder.order_basis ?? "—",
+                      },
+                      {
+                        label: "Measurement / Unit",
+                        value: [selectedOrder.measurement_type, selectedOrder.unit].filter(Boolean).join(" · ") || "—",
+                      },
+                      { label: "Total Ordered Quantity", value: String(soOrderedQty) },
+                      {
+                        label: "Net Weight (SO)",
+                        value: selectedOrder.net_weight ?? "—",
+                      },
+                      {
+                        label: "Gross Weight (SO)",
+                        value: selectedOrder.gross_weight ?? "—",
+                      },
+                      {
+                        label: "Sticker Range (Mapped)",
+                        value: stickerRangeDisplay,
+                      },
+                      {
+                        label: "Rate / Unit (SO)",
+                        value:
+                          selectedOrder.items?.[0]?.rate != null
+                            ? `₹${selectedOrder.items[0].rate}`
+                            : "—",
+                      },
+                      {
+                        label: "Order Value (₹)",
+                        value:
+                          selectedOrder.total_amount != null
+                            ? selectedOrder.total_amount.toLocaleString("en-IN")
+                            : "—",
+                      },
+                    ] satisfies GrnSoSummaryRow[]
+                  ).map(renderSoSummaryCell)}
                 </div>
               </div>
             ) : editingGrn ? (
@@ -542,64 +615,64 @@ export function GRNPage() {
                   Linked sales order record was not found. Values below are stored on this GRN for reference.
                 </p>
                 <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-                  {[
-                    {
-                      label: "Sales Order No.",
-                      value:
-                        editingGrn.sales_order_number ??
-                        editingGrn.sales_order_id ??
-                        "—",
-                    },
-                    { label: "Order Date", value: "—" },
-                    { label: "Expected Delivery", value: "—" },
-                    { label: "Order Status", value: "—" },
-                    {
-                      label: "Customer Name",
-                      value:
-                        editingGrn.customer_name ??
-                        data.getCustomer(editingGrn.customer_id ?? "")?.customer_name ??
-                        "—",
-                    },
-                    { label: "Sub category", value: editingGrn.product_name ?? "—" },
-                    { label: "Product Category", value: editingGrn.category_name ?? "—" },
-                    { label: "Order Basis", value: "—" },
-                    {
-                      label: "Measurement / Unit",
-                      value: editingGrn.unit ?? "—",
-                    },
-                    { label: "Total Ordered Quantity", value: "—" },
-                    {
-                      label: "Net Weight (SO)",
-                      value: editingGrn.net_weight ?? "—",
-                    },
-                    {
-                      label: "Gross Weight (SO)",
-                      value: editingGrn.gross_weight ?? "—",
-                    },
-                    {
-                      label: "Sticker Range (Mapped)",
-                      value: grnStickerRangeDisplay,
-                    },
-                    {
-                      label: "Rate / Unit (SO)",
-                      value:
-                        editingGrn.rate != null && editingGrn.rate !== ""
-                          ? `₹${editingGrn.rate}`
-                          : "—",
-                    },
-                    {
-                      label: "Order Value (₹)",
-                      value:
-                        editingGrn.total_amount != null && editingGrn.total_amount !== ""
-                          ? Number(editingGrn.total_amount).toLocaleString("en-IN")
-                          : "—",
-                    },
-                  ].map((row) => (
-                    <div key={row.label} className="space-y-1 min-w-0">
-                      <Label className="text-xs font-medium text-muted-foreground">{row.label}</Label>
-                      <Input readOnly value={row.value} className={cn(inputPencil, "h-8 text-sm opacity-90 min-w-0")} />
-                    </div>
-                  ))}
+                  {(
+                    [
+                      {
+                        label: "Sales Order No.",
+                        value:
+                          editingGrn.sales_order_number ??
+                          editingGrn.sales_order_id ??
+                          "—",
+                      },
+                      { label: "Order Date", value: "—" },
+                      { label: "Expected Delivery", value: "—" },
+                      { label: "Order Status", value: "—" },
+                      {
+                        label: "Customer Name",
+                        value:
+                          editingGrn.customer_name ??
+                          data.getCustomer(editingGrn.customer_id ?? "")?.customer_name ??
+                          "—",
+                      },
+                      {
+                        label: "Sub category",
+                        badgeValues: parseSubCategoryLabels(editingGrn.product_name),
+                      },
+                      { label: "Product Category", value: editingGrn.category_name ?? "—" },
+                      { label: "Order Basis", value: "—" },
+                      {
+                        label: "Measurement / Unit",
+                        value: editingGrn.unit ?? "—",
+                      },
+                      { label: "Total Ordered Quantity", value: "—" },
+                      {
+                        label: "Net Weight (SO)",
+                        value: editingGrn.net_weight ?? "—",
+                      },
+                      {
+                        label: "Gross Weight (SO)",
+                        value: editingGrn.gross_weight ?? "—",
+                      },
+                      {
+                        label: "Sticker Range (Mapped)",
+                        value: grnStickerRangeDisplay,
+                      },
+                      {
+                        label: "Rate / Unit (SO)",
+                        value:
+                          editingGrn.rate != null && editingGrn.rate !== ""
+                            ? `₹${editingGrn.rate}`
+                            : "—",
+                      },
+                      {
+                        label: "Order Value (₹)",
+                        value:
+                          editingGrn.total_amount != null && editingGrn.total_amount !== ""
+                            ? Number(editingGrn.total_amount).toLocaleString("en-IN")
+                            : "—",
+                      },
+                    ] satisfies GrnSoSummaryRow[]
+                  ).map(renderSoSummaryCell)}
                 </div>
               </div>
             ) : mode === "create" && customerId ? (
@@ -610,7 +683,7 @@ export function GRNPage() {
             ) : null}
           </div>
 
-          {selectedOrder || mode === "edit" ? (
+          {useFullGrnLayout ? (
             <>
           {/* Card: GRN Details */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-6 shadow-sm">
@@ -624,13 +697,15 @@ export function GRNPage() {
                   readOnly
                   value={
                     mode === "create"
-                      ? "(Auto-generated on save)"
+                      ? data.getNextGRNNumber()
                       : data.getGRN(selectedId ?? "")?.grn_number ?? selectedId ?? "—"
                   }
                   className={cn(inputPencilMuted, "text-muted-foreground")}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {mode === "create" ? "Auto-generated" : "GRN number"}
+                  {mode === "create"
+                    ? "Next number in sequence; confirmed when you save."
+                    : "GRN number"}
                 </p>
               </div>
               <div className="space-y-1 min-w-0">
@@ -677,20 +752,30 @@ export function GRNPage() {
                 <Input value={receivedBy} onChange={(e) => setReceivedBy(e.target.value)} className={inputPencil} />
               </div>
               <div className="space-y-1 min-w-0">
-                <Label className="text-xs font-medium">Vehicle Number</Label>
-                <Input value={vehicleNumber} onChange={(e) => setVehicleNumber(e.target.value)} className={inputPencil} />
-              </div>
-              <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Net Weight (kg)
                 </Label>
-                <Input type="number" min={0} step="any" value={netWeight} onChange={(e) => setNetWeight(e.target.value)} className={inputPencil} />
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={netWeight}
+                  onChange={(e) => setNetWeight(e.target.value)}
+                  className={inputPencil}
+                />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Gross Weight (kg)
                 </Label>
-                <Input type="number" min={0} step="any" value={grossWeight} onChange={(e) => setGrossWeight(e.target.value)} className={inputPencil} />
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={grossWeight}
+                  onChange={(e) => setGrossWeight(e.target.value)}
+                  className={inputPencil}
+                />
                 <p className="text-xs text-muted-foreground">Must be &gt;= Net Weight</p>
               </div>
             </div>
@@ -868,7 +953,11 @@ export function GRNPage() {
             <div className="space-y-4 py-4">
               <div className="space-y-2">
                 <Label>GRN Number</Label>
-                <Input value={data.getGRN(selectedId ?? "")?.grn_number ?? "—"} readOnly className="bg-muted" />
+                <Input
+                  value={data.getGRN(selectedId ?? "")?.grn_number ?? "—"}
+                  readOnly
+                  className="bg-muted"
+                />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -916,15 +1005,7 @@ export function GRNPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Vehicle Number</Label>
-                  <Input
-                    value={vehicleNumber}
-                    onChange={(e) => setVehicleNumber(e.target.value)}
-                    readOnly={isView}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Net Weight</Label>
+                  <Label>Net Weight (kg) *</Label>
                   <Input
                     type="number"
                     min={0}
@@ -935,7 +1016,7 @@ export function GRNPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Gross Weight</Label>
+                  <Label>Gross Weight (kg) *</Label>
                   <Input
                     type="number"
                     min={0}

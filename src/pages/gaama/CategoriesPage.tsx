@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -161,11 +162,19 @@ export function CategoriesPage() {
     setSelectedId(null)
   }
 
-  const filteredCategories = categories.filter(
-    (c) =>
-      (c.category_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.description ?? "").toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredCategories = React.useMemo(() => {
+    const term = searchTerm.toLowerCase()
+    const list = categories.filter(
+      (c) =>
+        (c.category_name ?? "").toLowerCase().includes(term) ||
+        (c.description ?? "").toLowerCase().includes(term)
+    )
+    return sortLatestFirst(
+      list,
+      (c) => latestOfDates(c.updated_at, c.created_at),
+      (c) => c.category_id
+    )
+  }, [categories, searchTerm])
 
   // Full-page Add/Edit Category form
   if (showForm && allowed) {

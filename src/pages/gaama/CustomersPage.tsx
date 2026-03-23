@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cityOptionsForState } from "@/data/indian-state-cities"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 const INDUSTRY_TYPES = [
   "Retail",
@@ -446,19 +447,27 @@ export function CustomersPage() {
     setMode("view")
   }
 
-  const filteredCustomers = customers.filter((c) => {
-    const matchSearch =
-      (c.customer_name ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.email ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.phone ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (c.contact_person ?? "").toLowerCase().includes(searchTerm.toLowerCase())
-    const matchIndustry =
-      industryFilter === "all" || (c.industry_type ?? "") === industryFilter
-    const matchCity =
-      cityFilter === "all" ||
-      (c.billing_address ?? "").toLowerCase().includes(cityFilter.toLowerCase())
-    return matchSearch && matchIndustry && matchCity
-  })
+  const filteredCustomers = React.useMemo(() => {
+    const term = searchTerm.toLowerCase()
+    const list = customers.filter((c) => {
+      const matchSearch =
+        (c.customer_name ?? "").toLowerCase().includes(term) ||
+        (c.email ?? "").toLowerCase().includes(term) ||
+        (c.phone ?? "").toLowerCase().includes(term) ||
+        (c.contact_person ?? "").toLowerCase().includes(term)
+      const matchIndustry =
+        industryFilter === "all" || (c.industry_type ?? "") === industryFilter
+      const matchCity =
+        cityFilter === "all" ||
+        (c.billing_address ?? "").toLowerCase().includes(cityFilter.toLowerCase())
+      return matchSearch && matchIndustry && matchCity
+    })
+    return sortLatestFirst(
+      list,
+      (c) => latestOfDates(c.updated_at, c.created_at),
+      (c) => c.customer_id
+    )
+  }, [customers, searchTerm, industryFilter, cityFilter])
   const uniqueCities = Array.from(
     new Set(
       customers

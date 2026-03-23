@@ -42,6 +42,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type Tab = "pending" | "delivery"
 type ModalMode = "create" | "edit" | "view" | null
@@ -125,10 +126,14 @@ export function ChallanPage() {
     return set
   }, [challans, grns])
 
-  const pendingGrns = React.useMemo(
-    () => grns.filter((g) => g.status === "Completed" && !grnIdsInChallans.has(g.grn_id)),
-    [grns, grnIdsInChallans]
-  )
+  const pendingGrns = React.useMemo(() => {
+    const list = grns.filter((g) => g.status === "Completed" && !grnIdsInChallans.has(g.grn_id))
+    return sortLatestFirst(
+      list,
+      (g) => latestOfDates(g.received_date, g.created_at),
+      (g) => g.grn_id
+    )
+  }, [grns, grnIdsInChallans])
 
   const toggleGrnSelection = (grnId: string) => {
     setSelectedGrnIds((prev) => {
@@ -227,14 +232,20 @@ export function ChallanPage() {
     setMode(null)
   }
 
-  const filteredChallans = challans.filter((c) => {
+  const filteredChallans = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return (
-      (c.challan_number ?? c.challan_id).toLowerCase().includes(term) ||
-      (c.customer_name ?? "").toLowerCase().includes(term) ||
-      (c.grn_numbers ?? "").toLowerCase().includes(term)
+    const list = challans.filter(
+      (c) =>
+        (c.challan_number ?? c.challan_id).toLowerCase().includes(term) ||
+        (c.customer_name ?? "").toLowerCase().includes(term) ||
+        (c.grn_numbers ?? "").toLowerCase().includes(term)
     )
-  })
+    return sortLatestFirst(
+      list,
+      (c) => latestOfDates(c.dispatch_date, c.created_at),
+      (c) => c.challan_id
+    )
+  }, [challans, searchTerm])
 
   const cancelCreateChallan = () => {
     if (!window.confirm("Discard changes?")) return

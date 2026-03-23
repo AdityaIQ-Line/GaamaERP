@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type Tab = "pending" | "certificate"
 type ModalMode = "create" | "view" | null
@@ -102,10 +103,14 @@ export function CertificatesPage() {
     return set
   }, [certificates, data])
 
-  const pendingForCert = React.useMemo(
-    () => completedGrns.filter((g) => !grnIdsWithCert.has(g.grn_id)),
-    [completedGrns, grnIdsWithCert]
-  )
+  const pendingForCert = React.useMemo(() => {
+    const list = completedGrns.filter((g) => !grnIdsWithCert.has(g.grn_id))
+    return sortLatestFirst(
+      list,
+      (g) => latestOfDates(g.received_date, g.created_at),
+      (g) => g.grn_id
+    )
+  }, [completedGrns, grnIdsWithCert])
 
   const openGenerate = (grn: GRN) => {
     setCreateFromGrnId(grn.grn_id)
@@ -197,14 +202,20 @@ export function CertificatesPage() {
     setMode("view")
   }
 
-  const filteredCerts = certificates.filter((c) => {
+  const filteredCerts = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return (
-      (c.certificate_no ?? c.certificate_id).toLowerCase().includes(term) ||
-      (c.sales_order_number ?? c.sales_order_id).toLowerCase().includes(term) ||
-      (c.customer_name ?? "").toLowerCase().includes(term)
+    const list = certificates.filter(
+      (c) =>
+        (c.certificate_no ?? c.certificate_id).toLowerCase().includes(term) ||
+        (c.sales_order_number ?? c.sales_order_id).toLowerCase().includes(term) ||
+        (c.customer_name ?? "").toLowerCase().includes(term)
     )
-  })
+    return sortLatestFirst(
+      list,
+      (c) => latestOfDates(c.issued_date, c.created_at, c.irradiation_complete_date),
+      (c) => c.certificate_id
+    )
+  }, [certificates, searchTerm])
 
   const viewCert = viewId ? data.getCertificate(viewId) : null
 

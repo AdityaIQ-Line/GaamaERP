@@ -38,6 +38,7 @@ import { useData, canAccess } from "@/context/DataContext"
 import type { GRN, GRNStatus } from "@/lib/gaama-types"
 import { GitBranch, Search, Download } from "lucide-react"
 import { toast } from "sonner"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 const PROCESS_STATUSES: { value: GRNStatus; label: string }[] = [
   { value: "In Progress", label: "In Progress" },
@@ -78,7 +79,7 @@ export function ProcessTrackingPage() {
   )
 
   const filteredRows = React.useMemo(() => {
-    return processGrns.filter((g) => {
+    const list = processGrns.filter((g) => {
       const matchSearch =
         !searchTerm ||
         (g.grn_number ?? "").toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -93,6 +94,11 @@ export function ProcessTrackingPage() {
         filterStatus === "all" || g.status === filterStatus
       return matchSearch && matchCustomer && matchCategory && matchStatus
     })
+    return sortLatestFirst(
+      list,
+      (g) => latestOfDates(g.received_date, g.created_at),
+      (g) => g.grn_id
+    )
   }, [processGrns, searchTerm, filterCustomer, filterCategory, filterStatus])
 
   const uniqueCustomers = React.useMemo(() => {

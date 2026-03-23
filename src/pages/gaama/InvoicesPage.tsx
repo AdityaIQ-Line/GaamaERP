@@ -41,6 +41,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type Tab = "pending" | "invoices"
 type ModalMode = "create" | "edit" | "view" | null
@@ -89,15 +90,18 @@ export function InvoicesPage() {
     return set
   }, [invoices])
 
-  const pendingChallans = React.useMemo(
-    () =>
-      challans.filter(
-        (c) =>
-          c.status === "Delivered" &&
-          !challanNumbersInInvoices.has(c.challan_number ?? c.challan_id)
-      ),
-    [challans, challanNumbersInInvoices]
-  )
+  const pendingChallans = React.useMemo(() => {
+    const list = challans.filter(
+      (c) =>
+        c.status === "Delivered" &&
+        !challanNumbersInInvoices.has(c.challan_number ?? c.challan_id)
+    )
+    return sortLatestFirst(
+      list,
+      (c) => latestOfDates(c.dispatch_date, c.created_at),
+      (c) => c.challan_id
+    )
+  }, [challans, challanNumbersInInvoices])
 
   const openCreateFromChallan = (challan: Challan) => {
     const soId = challan.sales_order_id
@@ -191,14 +195,20 @@ export function InvoicesPage() {
     setMode(null)
   }
 
-  const filteredInvoices = invoices.filter((i) => {
+  const filteredInvoices = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return (
-      (i.invoice_number ?? i.invoice_id).toLowerCase().includes(term) ||
-      (i.sales_order_number ?? i.sales_order_id).toLowerCase().includes(term) ||
-      (i.customer_name ?? "").toLowerCase().includes(term)
+    const list = invoices.filter(
+      (i) =>
+        (i.invoice_number ?? i.invoice_id).toLowerCase().includes(term) ||
+        (i.sales_order_number ?? i.sales_order_id).toLowerCase().includes(term) ||
+        (i.customer_name ?? "").toLowerCase().includes(term)
     )
-  })
+    return sortLatestFirst(
+      list,
+      (i) => latestOfDates(i.invoice_date, i.created_at, i.requested_date_time),
+      (i) => i.invoice_id
+    )
+  }, [invoices, searchTerm])
 
   const invoiceCreateForm = (
     <div className="rounded-lg border border-border bg-card p-6">

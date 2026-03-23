@@ -47,6 +47,9 @@ export interface DataContextValue extends DataState {
   getRate: (id: string) => Rate | undefined
   getRatesByCategory: (categoryId: string) => Rate[]
   getNextStickerNumber: () => number
+  getNextSalesOrderNumber: () => string
+  /** Next GRN number using the same rule as addGRN (for create-form preview). */
+  getNextGRNNumber: () => string
   addSalesOrder: (o: Omit<SalesOrder, "sales_order_id" | "created_at">) => SalesOrder
   updateSalesOrder: (id: string, o: Partial<SalesOrder>) => void
   getSalesOrder: (id: string) => SalesOrder | undefined
@@ -72,6 +75,27 @@ export interface DataContextValue extends DataState {
 
 function generateId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+}
+
+/** Next SO-YYYY-NNN; same rule as addSalesOrder (count orders whose order_date is in the current calendar year). */
+function nextSalesOrderNumberFromList(orders: SalesOrder[]): string {
+  const year = new Date().getFullYear()
+  const sameYear = orders.filter(
+    (x) => x.order_date && x.order_date.startsWith(String(year))
+  ).length
+  return `SO-${year}-${String(sameYear + 1).padStart(3, "0")}`
+}
+
+/** Next GRN-YYYY-MMnnn; same sequence rule as addGRN. */
+function nextGRNNumberFromList(grns: GRN[], at: Date): string {
+  const year = at.getFullYear()
+  const month = String(at.getMonth() + 1).padStart(2, "0")
+  const ymPrefix = `${year}-${month}`
+  const sameMonth = grns.filter((x) => {
+    const d = x.received_date || x.created_at
+    return d && String(d).startsWith(ymPrefix)
+  }).length
+  return `GRN-${year}-${month}${String(sameMonth + 1).padStart(3, "0")}`
 }
 
 /** If a collection in localStorage is missing or empty, fill from demo seed so every module has rows. */
@@ -225,13 +249,12 @@ export function DataProvider({
   const getRatesByCategory: DataContextValue["getRatesByCategory"] = (categoryId) =>
     state.rates.filter((r) => r.category_id === categoryId)
 
+  const getNextSalesOrderNumber: DataContextValue["getNextSalesOrderNumber"] = () =>
+    nextSalesOrderNumberFromList(state.salesOrders)
+
   const addSalesOrder: DataContextValue["addSalesOrder"] = (o) => {
     const now = new Date().toISOString()
-    const year = new Date().getFullYear()
-    const sameYear = state.salesOrders.filter(
-      (x) => x.order_date && x.order_date.startsWith(String(year))
-    ).length
-    const order_number = `SO-${year}-${String(sameYear + 1).padStart(3, "0")}`
+    const order_number = nextSalesOrderNumberFromList(state.salesOrders)
     const order: SalesOrder = {
       ...o,
       sales_order_id: generateId("so"),
@@ -253,15 +276,12 @@ export function DataProvider({
   const getSalesOrder: DataContextValue["getSalesOrder"] = (id) =>
     state.salesOrders.find((o) => o.sales_order_id === id)
 
+  const getNextGRNNumber: DataContextValue["getNextGRNNumber"] = () =>
+    nextGRNNumberFromList(state.grns, new Date())
+
   const addGRN: DataContextValue["addGRN"] = (g) => {
     const now = new Date()
-    const year = now.getFullYear()
-    const month = String(now.getMonth() + 1).padStart(2, "0")
-    const sameMonth = state.grns.filter((x) => {
-      const d = x.received_date || (x as { created_at?: string }).created_at
-      return d && d.startsWith(`${year}-${month}`)
-    }).length
-    const grn_number = `GRN-${year}-${month}${String(sameMonth + 1).padStart(3, "0")}`
+    const grn_number = nextGRNNumberFromList(state.grns, now)
     const grn: GRN = {
       ...g,
       grn_id: generateId("grn"),
@@ -405,6 +425,8 @@ export function DataProvider({
     getRate,
     getRatesByCategory,
     getNextStickerNumber,
+    getNextSalesOrderNumber,
+    getNextGRNNumber,
     addSalesOrder,
     updateSalesOrder,
     getSalesOrder,

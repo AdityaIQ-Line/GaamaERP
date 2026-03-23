@@ -38,6 +38,7 @@ import type { Rate, PricingType } from "@/lib/gaama-types"
 import { Plus, IndianRupee, Search, Pencil, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 const PRICING_TYPES: PricingType[] = ["By Carton", "By Bag", "By Weight", "By Vehicle"]
 const STATUS_OPTIONS = ["Active", "Inactive"]
@@ -166,17 +167,24 @@ export function RatesPage() {
     }
   }
 
-  const filteredRates = rates.filter((r) => {
-    const catName = data.getCategory(r.category_id)?.category_name ?? ""
-    const custName = r.customer_name ?? ""
+  const filteredRates = React.useMemo(() => {
     const term = searchTerm.toLowerCase()
-    return (
-      catName.toLowerCase().includes(term) ||
-      custName.toLowerCase().includes(term) ||
-      String(r.rate_value).includes(term) ||
-      (r.pricing_type ?? "").toLowerCase().includes(term)
+    const list = rates.filter((r) => {
+      const catName = categories.find((c) => c.category_id === r.category_id)?.category_name ?? ""
+      const custName = r.customer_name ?? ""
+      return (
+        catName.toLowerCase().includes(term) ||
+        custName.toLowerCase().includes(term) ||
+        String(r.rate_value).includes(term) ||
+        (r.pricing_type ?? "").toLowerCase().includes(term)
+      )
+    })
+    return sortLatestFirst(
+      list,
+      (r) => latestOfDates(r.effective_date, r.effective_from, r.created_at),
+      (r) => r.rate_id
     )
-  })
+  }, [rates, searchTerm, categories])
 
   const renderRateForm = (footer: React.ReactNode) => {
     const validityFrozen = mode === "edit"

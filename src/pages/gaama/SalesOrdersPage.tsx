@@ -39,22 +39,26 @@ import {
   ShoppingCart,
   Search,
   PackageCheck,
+  Package,
   Eye,
   Pencil,
   Info,
   Calendar,
   CircleCheck,
+  User,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Link } from "react-router-dom"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
-import { cn } from "@/lib/utils"
+import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
 
-const MEASUREMENT_TYPES = ["carton", "bag", "weight"]
+/** Carton / bag only — weight-based orders use Order basis → Weight (saved as measurement_type weight). */
+const MEASUREMENT_TYPES_DROPDOWN = ["carton", "bag"] as const
 const ORDER_BASIS_OPTIONS = [
   { value: "standard", label: "Standard (Carton/Bag)" },
   { value: "vehicle", label: "Vehicle" },
@@ -81,6 +85,12 @@ function salesOrderListUnit(o: SalesOrder): string {
   const mt = o.measurement_type?.trim()
   if (mt) return MEASUREMENT_LABELS[mt] ?? mt
   return "—"
+}
+
+function parseLooseQuantity(s: string | number | undefined | null): number {
+  if (s == null) return 0
+  const n = Number(String(s).replace(/,/g, "").trim())
+  return Number.isFinite(n) ? n : 0
 }
 const WEIGHT_TYPE_OPTIONS = [
   { value: "net", label: "Net" },
@@ -114,14 +124,27 @@ function pickRateForSalesOrder(
   return generic ?? sorted[0]
 }
 
+/** Stored on the order / payload (includes weight when order basis is weight). */
+function payloadMeasurementType(
+  orderBasis: "standard" | "vehicle" | "weight",
+  formMeasurement: "carton" | "bag"
+): "carton" | "bag" | "weight" {
+  return orderBasis === "weight" ? "weight" : formMeasurement
+}
+
+/** Load order into form: dropdown never uses "weight". */
+function measurementTypeForForm(stored: string | undefined): "carton" | "bag" {
+  return stored === "bag" ? "bag" : "carton"
+}
+
 /** Align order basis + measurement with Rate Master pricing type (Pencil / Gaama flow). */
 function defaultsFromPricingType(pricing: PricingType | undefined): {
   orderBasis: "standard" | "vehicle" | "weight"
-  measurementType: "carton" | "bag" | "weight"
+  measurementType: "carton" | "bag"
 } {
   switch (pricing) {
     case "By Weight":
-      return { orderBasis: "weight", measurementType: "weight" }
+      return { orderBasis: "weight", measurementType: "carton" }
     case "By Vehicle":
       return { orderBasis: "vehicle", measurementType: "carton" }
     case "By Bag":
@@ -187,7 +210,7 @@ export function SalesOrdersPage() {
   const [customerId, setCustomerId] = React.useState("")
   const [categoryId, setCategoryId] = React.useState("")
   const [productId, setProductId] = React.useState("")
-  const [measurementType, setMeasurementType] = React.useState("carton")
+  const [measurementType, setMeasurementType] = React.useState<"carton" | "bag">("carton")
   const [quantity, setQuantity] = React.useState<string>("")
   const [netWeight, setNetWeight] = React.useState("")
   const [grossWeight, setGrossWeight] = React.useState("")
@@ -238,7 +261,8 @@ export function SalesOrdersPage() {
   }, [mode, categoryId, customerId, data.rates])
 
   const qtyNum = Number(quantity) || 0
-  const isStickerType = measurementType === "carton" || measurementType === "bag"
+  const isStickerType =
+    orderBasis !== "weight" && (measurementType === "carton" || measurementType === "bag")
 
   /** Pencil f7Kvs: ending sticker = start + quantity − 1 (create flow). */
   const computedStickerEnd = React.useMemo(() => {
@@ -288,7 +312,7 @@ export function SalesOrdersPage() {
     setCustomerId(o.customer_id)
     setCategoryId(o.category_id ?? "")
     setProductId(o.product_id ?? "")
-    setMeasurementType((o.measurement_type as "carton" | "bag" | "weight") ?? "carton")
+    setMeasurementType(measurementTypeForForm(o.measurement_type))
     setQuantity(o.quantity ?? String(o.items?.[0]?.quantity ?? ""))
     setNetWeight(o.net_weight ?? "")
     setGrossWeight(o.gross_weight ?? "")
@@ -308,7 +332,7 @@ export function SalesOrdersPage() {
     setCustomerId(o.customer_id)
     setCategoryId(o.category_id ?? "")
     setProductId(o.product_id ?? "")
-    setMeasurementType((o.measurement_type as "carton" | "bag" | "weight") ?? "carton")
+    setMeasurementType(measurementTypeForForm(o.measurement_type))
     setQuantity(o.quantity ?? String(o.items?.[0]?.quantity ?? ""))
     setNetWeight(o.net_weight ?? "")
     setGrossWeight(o.gross_weight ?? "")
@@ -338,7 +362,13 @@ export function SalesOrdersPage() {
     const cat = data.getCategory(categoryId)
     const cust = data.getCustomer(customerId)
     const productName = products.find((p) => p.id === productId)?.name ?? ""
-    const unit = measurementType === "weight" ? "kg" : measurementType === "carton" ? "carton" : "bag"
+    const measurementForPayload = payloadMeasurementType(orderBasis, measurementType)
+    const unit =
+      measurementForPayload === "weight"
+        ? "kg"
+        : measurementForPayload === "carton"
+          ? "carton"
+          : "bag"
     const rate = pickRateForSalesOrder(
       (id) => data.getRatesByCategory(id),
       categoryId,
@@ -373,7 +403,7 @@ export function SalesOrdersPage() {
       product_name: productName,
       quantity: String(qty),
       unit,
-      measurement_type: measurementType,
+      measurement_type: measurementForPayload,
       order_basis: orderBasis,
       weight_type_for_invoicing: orderBasis === "weight" ? weightTypeForInvoicing : undefined,
       net_weight: netWeight || undefined,
@@ -405,19 +435,12 @@ export function SalesOrdersPage() {
     const gross = parseFloat(grossWeight)
     if (grossWeight && netWeight && !isNaN(gross) && !isNaN(net) && gross < net)
       return "Gross weight must be ≥ net weight."
-    if (isStickerType && qtyNum > 0) {
+    if (mode === "create" && isStickerType && qtyNum > 0) {
       if (stickerRangeStart.trim() === "" || Number.isNaN(Number(stickerRangeStart))) {
         return "Sticker range start is required for carton/bag orders."
       }
-      if (mode === "create") {
-        if (computedStickerEnd === "" || Number.isNaN(Number(computedStickerEnd))) {
-          return "Sticker range end could not be calculated. Check quantity and start number."
-        }
-      }
-      if (mode === "edit") {
-        if (stickerRangeEnd.trim() === "" || Number.isNaN(Number(stickerRangeEnd))) {
-          return "Sticker range end is required for carton/bag orders."
-        }
+      if (computedStickerEnd === "" || Number.isNaN(Number(computedStickerEnd))) {
+        return "Sticker range end could not be calculated. Check quantity and start number."
       }
     }
     return null
@@ -499,24 +522,38 @@ export function SalesOrdersPage() {
     }
   }, [filterCustomerId, customers])
 
-  const filteredOrders = orders.filter((o) => {
-    if (filterCustomerId !== "all" && o.customer_id !== filterCustomerId) return false
-    if (filterStatus !== "all" && orderStatusToComparableString(o.order_status) !== filterStatus)
-      return false
-    if (filterOrderDate) {
-      const d = o.order_date?.slice(0, 10) ?? ""
-      if (d !== filterOrderDate) return false
-    }
-    const soNum = o.sales_order_number ?? o.order_number ?? o.sales_order_id
-    const custName = data.getCustomer(o.customer_id)?.customer_name ?? ""
+  const filteredOrders = React.useMemo(() => {
     const term = searchTerm.toLowerCase().trim()
-    if (!term) return true
-    return (
-      (soNum ?? "").toLowerCase().includes(term) ||
-      custName.toLowerCase().includes(term) ||
-      orderStatusToComparableString(o.order_status).toLowerCase().includes(term)
+    const filtered = orders.filter((o) => {
+      if (filterCustomerId !== "all" && o.customer_id !== filterCustomerId) return false
+      if (filterStatus !== "all" && orderStatusToComparableString(o.order_status) !== filterStatus)
+        return false
+      if (filterOrderDate) {
+        const d = o.order_date?.slice(0, 10) ?? ""
+        if (d !== filterOrderDate) return false
+      }
+      const soNum = o.sales_order_number ?? o.order_number ?? o.sales_order_id
+      const custName = customers.find((c) => c.customer_id === o.customer_id)?.customer_name ?? ""
+      if (!term) return true
+      return (
+        (soNum ?? "").toLowerCase().includes(term) ||
+        custName.toLowerCase().includes(term) ||
+        orderStatusToComparableString(o.order_status).toLowerCase().includes(term)
+      )
+    })
+    return sortLatestFirst(
+      filtered,
+      (o) => latestOfDates(o.created_at, o.order_date),
+      (o) => o.sales_order_id
     )
-  })
+  }, [
+    orders,
+    customers,
+    filterCustomerId,
+    filterStatus,
+    filterOrderDate,
+    searchTerm,
+  ])
 
   const grnsForOrder = (salesOrderId: string) =>
     data.grns.filter((g) => g.sales_order_id === salesOrderId)
@@ -542,9 +579,9 @@ export function SalesOrdersPage() {
                 <div className="space-y-2">
                   <Label>Sales Order Number</Label>
                   <Input
-                    value="(Auto on save)"
+                    value={data.getNextSalesOrderNumber()}
                     readOnly
-                    className="h-9 font-mono text-sm bg-muted/40 opacity-90"
+                    className="h-9 font-mono text-sm bg-muted/40"
                   />
                 </div>
                 <div className="space-y-2">
@@ -634,13 +671,13 @@ export function SalesOrdersPage() {
                   </Label>
                   <Select
                     value={measurementType}
-                    onValueChange={(v: "carton" | "bag" | "weight") => setMeasurementType(v)}
+                    onValueChange={(v) => setMeasurementType(v as "carton" | "bag")}
                   >
                     <SelectTrigger className="h-9 bg-muted/60 border-border">
                       <SelectValue placeholder="Select measurement type" />
                     </SelectTrigger>
                     <SelectContent>
-                      {MEASUREMENT_TYPES.map((t) => (
+                      {MEASUREMENT_TYPES_DROPDOWN.map((t) => (
                         <SelectItem key={t} value={t}>
                           {MEASUREMENT_LABELS[t] ?? t}
                         </SelectItem>
@@ -822,21 +859,21 @@ export function SalesOrdersPage() {
                       min={1}
                       step={1}
                       value={stickerRangeStart}
-                      onChange={(e) => setStickerRangeStart(e.target.value)}
+                      disabled
                       placeholder={qtyNum > 0 ? "Auto-filled" : "Enter quantity first"}
-                      className="h-9 rounded-lg border border-input bg-muted/50"
+                      className="h-9 rounded-lg border border-input bg-muted/40 opacity-90"
                     />
                     <p className="text-xs text-muted-foreground">
                       Auto-filled from the next number after the{" "}
                       <span className="font-medium text-foreground">last used</span> sticker on any sales
-                      order. You can change it before save.
+                      order. This value cannot be edited.
                     </p>
                   </div>
                   <div className="space-y-2 min-w-0">
                     <Label className="text-sm font-medium text-foreground">Ending Sticker Number</Label>
                     <Input
                       type="number"
-                      readOnly
+                      disabled
                       value={computedStickerEnd}
                       placeholder="Auto-calculated"
                       className="h-9 rounded-lg border border-input bg-muted/40 opacity-90"
@@ -947,7 +984,11 @@ export function SalesOrdersPage() {
     const viewCat = viewOrder.category_id ? data.getCategory(viewOrder.category_id) : undefined
     const viewSoNum =
       viewOrder.sales_order_number ?? viewOrder.order_number ?? viewOrder.sales_order_id
-    const viewLinkedGrns = grnsForOrder(selectedId)
+    const viewLinkedGrns = sortLatestFirst(
+      grnsForOrder(selectedId),
+      (g) => latestOfDates(g.received_date, g.created_at),
+      (g) => g.grn_id
+    )
     const viewMt = ((): "carton" | "bag" | "weight" => {
       const mt = viewOrder.measurement_type?.trim()
       if (mt === "carton" || mt === "bag" || mt === "weight") return mt
@@ -990,12 +1031,58 @@ export function SalesOrdersPage() {
     const viewLineItemRate = viewOrder.items?.[0]?.rate
     const viewStickerRangeDisplay =
       viewOrder.sticker_range_start != null && viewOrder.sticker_range_end != null
-        ? `${viewOrder.sticker_range_start} – ${viewOrder.sticker_range_end}`
+        ? `${viewOrder.sticker_range_start} to ${viewOrder.sticker_range_end}`
         : viewOrder.sticker_range_start != null
           ? String(viewOrder.sticker_range_start)
           : viewOrder.sticker_range_end != null
             ? String(viewOrder.sticker_range_end)
             : "—"
+    const viewLinkedChallans = data.challans.filter((c) => c.sales_order_id === selectedId)
+    const orderedQtyNum =
+      parseLooseQuantity(viewQty) || viewOrder.items?.[0]?.quantity || 0
+    const receivedQtyNum = viewLinkedGrns.reduce((sum, g) => {
+      const q = parseLooseQuantity(g.received_quantity)
+      if (q > 0) return sum + q
+      const fromItems = g.received_items?.reduce((s, ri) => s + ri.quantity_received, 0) ?? 0
+      return sum + fromItems
+    }, 0)
+    const dispatchedQtyNum = viewLinkedChallans.reduce((sum, c) => {
+      if (c.status !== "Dispatched" && c.status !== "Delivered") return sum
+      const line =
+        c.items?.reduce((s, i) => s + i.quantity, 0) ?? parseLooseQuantity(c.quantity)
+      return sum + line
+    }, 0)
+    const remainingReceiveQty = Math.max(0, orderedQtyNum - receivedQtyNum)
+    const remainingDispatchQty = Math.max(0, receivedQtyNum - dispatchedQtyNum)
+    const fulfillmentPct =
+      orderedQtyNum > 0 ? Math.min(100, Math.round((receivedQtyNum / orderedQtyNum) * 100)) : 0
+    const qtyUnitLabel =
+      viewMt === "weight" ? "kg" : viewMt === "bag" ? "bags" : "cartons"
+    const viewStickerTotal =
+      viewOrder.sticker_range_start != null && viewOrder.sticker_range_end != null
+        ? viewOrder.sticker_range_end - viewOrder.sticker_range_start + 1
+        : orderedQtyNum
+    const orderDateLong =
+      viewOrder.order_date != null && viewOrder.order_date !== ""
+        ? new Date(viewOrder.order_date).toLocaleDateString("en-IN", {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })
+        : "—"
+    const grossWeightDisplay =
+      viewOrder.gross_weight != null && String(viewOrder.gross_weight).trim() !== ""
+        ? `${viewOrder.gross_weight} Kg`
+        : "—"
+    const netWeightDisplay =
+      viewOrder.net_weight != null && String(viewOrder.net_weight).trim() !== ""
+        ? `${viewOrder.net_weight} Kg`
+        : "—"
+    const custName =
+      viewCust?.customer_name ?? viewOrder.customer_name ?? viewOrder.customer_id
+    const custEmail = viewCust?.email ?? "—"
+    const custPhone = viewCust?.phone ?? "—"
+    const custAddress = viewCust?.billing_address ?? "—"
 
     return (
       <PageShell>
@@ -1013,15 +1100,11 @@ export function SalesOrdersPage() {
               }
             />
             <div className="space-y-6 px-6 py-4">
-              <div className="overflow-hidden rounded-[10px] border border-border shadow-sm">
-                <div className="flex flex-col gap-4 bg-muted/40 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="space-y-1">
-                    <p className="text-sm font-medium text-muted-foreground">Order number</p>
-                    <p className="font-mono text-lg font-semibold text-foreground">{viewSoNum}</p>
-                  </div>
+              <div className="overflow-hidden rounded-[10px] border border-border bg-card shadow-sm">
+                <div className="flex flex-wrap items-center justify-end gap-2 border-b border-border bg-muted/30 px-5 py-3 md:px-6">
                   <Badge
                     className={cn(
-                      "shrink-0 border px-3 py-1.5 text-sm font-medium",
+                      "border px-3 py-1.5 text-sm font-medium",
                       isSalesOrderApprovedStatus(viewOrder.order_status)
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-border bg-secondary text-secondary-foreground",
@@ -1030,101 +1113,183 @@ export function SalesOrdersPage() {
                     {viewOrder.order_status}
                   </Badge>
                 </div>
-
-                <div className="border-t border-border bg-card p-5 md:p-6 space-y-8">
-                  {/* Pencil oCP5D — order date (SO number is in header) */}
-                  <SalesOrderViewField label="Date">
-                    {viewOrder.order_date?.slice(0, 10) ?? "—"}
-                  </SalesOrderViewField>
-
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Customer Field Details</h2>
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <SalesOrderViewField label="Customer Name">
-                        {viewCust?.customer_name ?? viewOrder.customer_name ?? viewOrder.customer_id}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Customer Address">
-                        {viewCust?.billing_address ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Customer Email">
-                        {viewCust?.email ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Customer Phone">
-                        {viewCust?.phone ?? "—"}
-                      </SalesOrderViewField>
+                <div className="p-5 md:p-6">
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
+                  {/* Left — order identity, customer, weights */}
+                  <div className="space-y-4">
+                    <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+                        aria-hidden
+                      >
+                        <Package className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Sales Order Number</p>
+                        <p className="font-mono text-base font-semibold text-foreground">{viewSoNum}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+                        aria-hidden
+                      >
+                        <Calendar className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-muted-foreground">Sales Order Date</p>
+                        <p className="text-base font-semibold text-foreground">{orderDateLong}</p>
+                      </div>
+                    </div>
+                    <div className="flex gap-3 rounded-lg border border-border bg-card p-4">
+                      <div
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
+                        aria-hidden
+                      >
+                        <User className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="text-xs font-medium text-muted-foreground">Customer Name</p>
+                        <p className="text-base font-semibold text-foreground">{custName}</p>
+                        <p className="text-sm text-muted-foreground">{custEmail}</p>
+                        <p className="text-sm text-muted-foreground">{custPhone}</p>
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs font-medium text-muted-foreground">Gross Weight</p>
+                      <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                        {grossWeightDisplay}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs font-medium text-muted-foreground">Net Weight</p>
+                      <p className="mt-1 text-2xl font-bold tracking-tight text-foreground">
+                        {netWeightDisplay}
+                      </p>
                     </div>
                   </div>
 
-                  <div>
-                    <h2 className="text-lg font-semibold text-foreground">Order Details</h2>
-                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                      <SalesOrderViewField label="Measurement Type">
-                        {MEASUREMENT_LABELS[viewMt] ?? viewMt}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Quantity">{viewQty}</SalesOrderViewField>
-                      <SalesOrderViewField label="Value of Goods (₹)">
+                  {/* Center — quantity metrics */}
+                  <div className="space-y-3">
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                      <p className="text-xs font-medium text-muted-foreground">Total Ordered Quantity</p>
+                      <p className="mt-1 text-xl font-bold text-foreground">
+                        {orderedQtyNum.toLocaleString("en-IN")} {qtyUnitLabel}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                      <p className="text-xs font-medium text-muted-foreground">Total Received Quantity</p>
+                      <p className="mt-1 text-xl font-bold text-foreground">
+                        {receivedQtyNum.toLocaleString("en-IN")} {qtyUnitLabel}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                      <p className="text-xs font-medium text-muted-foreground">Total Dispatched Quantity</p>
+                      <p className="mt-1 text-xl font-bold text-foreground">
+                        {dispatchedQtyNum.toLocaleString("en-IN")} {qtyUnitLabel}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                      <p className="text-xs font-medium text-muted-foreground">Remaining Quantity</p>
+                      <p className="mt-1 text-xl font-bold text-foreground">
+                        {remainingReceiveQty.toLocaleString("en-IN")} {qtyUnitLabel}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border border-border bg-muted/30 px-4 py-3">
+                      <p className="text-xs font-medium text-muted-foreground">Remaining Dispatch Quantity</p>
+                      <p className="mt-1 text-xl font-bold text-foreground">
+                        {remainingDispatchQty.toLocaleString("en-IN")} {qtyUnitLabel}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Right — progress, value, address, sticker */}
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs font-medium text-muted-foreground">Fulfillment Progress</p>
+                      <p className="mt-1 text-2xl font-bold text-foreground">{fulfillmentPct}%</p>
+                      <p className="text-sm text-muted-foreground">
+                        {receivedQtyNum.toLocaleString("en-IN")} of{" "}
+                        {orderedQtyNum.toLocaleString("en-IN")}
+                      </p>
+                      <Progress value={fulfillmentPct} className="mt-3 h-2" />
+                    </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs font-medium text-muted-foreground">Value of Goods</p>
+                      <p className="mt-1 text-2xl font-bold text-foreground">
                         ₹{(viewOrder.total_amount ?? 0).toLocaleString("en-IN")}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Product Category">
-                        {viewCat?.category_name ?? viewOrder.category_name ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Sub category">{viewProductName}</SalesOrderViewField>
-                      <SalesOrderViewField label="Gross Weight (kg)">
-                        {viewOrder.gross_weight ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Net Weight (kg)">
-                        {viewOrder.net_weight ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Expected Delivery Date">
-                        {viewOrder.delivery_date?.slice(0, 10) ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Rate Master (₹ / unit)">
-                        {viewRate?.rate_value != null
-                          ? `₹${viewRate.rate_value.toLocaleString("en-IN")}`
-                          : "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Pricing type (Rate Master)">
-                        {viewRate?.pricing_type ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Line rate (₹ / unit)">
-                        {viewLineItemRate != null && !Number.isNaN(viewLineItemRate)
-                          ? `₹${viewLineItemRate.toLocaleString("en-IN")}`
-                          : "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Tax amount (₹)">
-                        {viewOrder.tax_amount != null
-                          ? `₹${viewOrder.tax_amount.toLocaleString("en-IN")}`
-                          : "—"}
-                      </SalesOrderViewField>
-                      <div className="sm:col-span-2 lg:col-span-4">
-                        <SalesOrderViewField label="Order Basis">{viewOrderBasisLabel}</SalesOrderViewField>
-                        <p className="mt-1 text-xs text-primary">{viewOrderBasisHelp}</p>
-                      </div>
-                      {viewOrder.order_basis === "weight" && (
-                        <SalesOrderViewField label="Weight type for invoicing">
-                          {viewWtLabel}
-                        </SalesOrderViewField>
-                      )}
-                      <SalesOrderViewField label="Created at">
-                        {viewOrder.created_at?.slice(0, 10) ?? "—"}
-                      </SalesOrderViewField>
-                      <SalesOrderViewField label="Created by">
-                        {viewOrder.created_by ?? "—"}
-                      </SalesOrderViewField>
+                      </p>
                     </div>
+                    <div className="rounded-lg border border-border p-4">
+                      <p className="text-xs font-medium text-muted-foreground">Customer Address</p>
+                      <p className="mt-2 text-sm font-medium leading-relaxed text-foreground">
+                        {custAddress}
+                      </p>
+                    </div>
+                    {viewStickerType && (
+                      <div className="rounded-lg border border-border p-4">
+                        <p className="text-xs font-medium text-muted-foreground">Sticker Range</p>
+                        <p className="mt-1 text-xl font-bold text-foreground">{viewStickerRangeDisplay}</p>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          Total: {viewStickerTotal.toLocaleString("en-IN")} stickers
+                        </p>
+                      </div>
+                    )}
                   </div>
+                </div>
+                </div>
+              </div>
 
-                  {viewStickerType && (
-                    <div>
-                      <h2 className="text-lg font-semibold text-foreground">Sticker Range</h2>
-                      <div className="mt-4">
-                        <SalesOrderViewField label="Sticker range">
-                          {viewStickerRangeDisplay}
-                        </SalesOrderViewField>
-                      </div>
+              <div className="overflow-hidden rounded-[10px] border border-border bg-card shadow-sm">
+                <div className="border-b border-border bg-muted/30 px-5 py-4 md:px-6">
+                  <h2 className="text-base font-semibold text-foreground">Additional order details</h2>
+                </div>
+                <div className="p-5 md:p-6">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <SalesOrderViewField label="Measurement Type">
+                      {MEASUREMENT_LABELS[viewMt] ?? viewMt}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Product Category">
+                      {viewCat?.category_name ?? viewOrder.category_name ?? "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Sub category">{viewProductName}</SalesOrderViewField>
+                    <SalesOrderViewField label="Expected Delivery Date">
+                      {viewOrder.delivery_date?.slice(0, 10) ?? "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Rate Master (₹ / unit)">
+                      {viewRate?.rate_value != null
+                        ? `₹${viewRate.rate_value.toLocaleString("en-IN")}`
+                        : "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Pricing type (Rate Master)">
+                      {viewRate?.pricing_type ?? "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Line rate (₹ / unit)">
+                      {viewLineItemRate != null && !Number.isNaN(viewLineItemRate)
+                        ? `₹${viewLineItemRate.toLocaleString("en-IN")}`
+                        : "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Tax amount (₹)">
+                      {viewOrder.tax_amount != null
+                        ? `₹${viewOrder.tax_amount.toLocaleString("en-IN")}`
+                        : "—"}
+                    </SalesOrderViewField>
+                    <div className="sm:col-span-2 lg:col-span-4">
+                      <SalesOrderViewField label="Order Basis">{viewOrderBasisLabel}</SalesOrderViewField>
+                      <p className="mt-1 text-xs text-primary">{viewOrderBasisHelp}</p>
                     </div>
-                  )}
-
+                    {viewOrder.order_basis === "weight" && (
+                      <SalesOrderViewField label="Weight type for invoicing">
+                        {viewWtLabel}
+                      </SalesOrderViewField>
+                    )}
+                    <SalesOrderViewField label="Created at">
+                      {viewOrder.created_at?.slice(0, 10) ?? "—"}
+                    </SalesOrderViewField>
+                    <SalesOrderViewField label="Created by">
+                      {viewOrder.created_by ?? "—"}
+                    </SalesOrderViewField>
+                  </div>
                 </div>
               </div>
 
@@ -1330,13 +1495,13 @@ export function SalesOrdersPage() {
                     </Label>
                     <Select
                       value={measurementType}
-                      onValueChange={(v: "carton" | "bag" | "weight") => setMeasurementType(v)}
+                      onValueChange={(v) => setMeasurementType(v as "carton" | "bag")}
                     >
                       <SelectTrigger className={editSelectTriggerClass}>
                         <SelectValue placeholder="Select measurement type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {MEASUREMENT_TYPES.map((t) => (
+                        {MEASUREMENT_TYPES_DROPDOWN.map((t) => (
                           <SelectItem key={t} value={t}>
                             {MEASUREMENT_LABELS[t] ?? t}
                           </SelectItem>
@@ -1352,60 +1517,39 @@ export function SalesOrdersPage() {
                       type="number"
                       min={1}
                       value={quantity}
-                      onChange={(e) => {
-                        const v = e.target.value
-                        setQuantity(v)
-                        const q = Number(v) || 0
-                        if (isStickerType && q > 0) {
-                          const n = parseInt(stickerRangeStart, 10)
-                          if (!Number.isNaN(n)) setStickerRangeEnd(String(n + q - 1))
-                        }
-                      }}
+                      onChange={(e) => setQuantity(e.target.value)}
                       className={editInputClass}
                     />
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">Value of Goods (₹)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={valueOfGoods}
-                      onChange={(e) => setValueOfGoods(e.target.value)}
-                      placeholder="Enter value of goods"
-                      className={editInputClass}
-                    />
-                    {valueOfGoods.trim() === "" && categoryId && (
-                      <p className="text-xs text-muted-foreground">
-                        From Rate Master: ₹{computedValueOfGoods.toLocaleString("en-IN")} (qty × rate)
-                      </p>
-                    )}
+                  <div className="col-span-full grid grid-cols-2 gap-4">
+                    <div className="space-y-2 min-w-0">
+                      <Label className="text-xs font-medium">
+                        Gross Weight (kg) <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={grossWeight}
+                        onChange={(e) => setGrossWeight(e.target.value)}
+                        className={editInputClass}
+                      />
+                    </div>
+                    <div className="space-y-2 min-w-0">
+                      <Label className="text-xs font-medium">
+                        Net Weight (kg) <span className="text-destructive">*</span>
+                      </Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="any"
+                        value={netWeight}
+                        onChange={(e) => setNetWeight(e.target.value)}
+                        className={editInputClass}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-medium">
-                      Gross Weight (kg) <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={grossWeight}
-                      onChange={(e) => setGrossWeight(e.target.value)}
-                      className={editInputClass}
-                    />
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <Label className="text-xs font-medium">
-                      Net Weight (kg) <span className="text-destructive">*</span>
-                    </Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      step="any"
-                      value={netWeight}
-                      onChange={(e) => setNetWeight(e.target.value)}
-                      className={editInputClass}
-                    />
+                  <div className="col-span-full">
                     <p className="text-xs text-muted-foreground">
                       Net weight must be{" "}
                       <span className="font-medium text-foreground" aria-label="less than or equal to">
@@ -1434,41 +1578,6 @@ export function SalesOrdersPage() {
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                )}
-
-                {isStickerType && (
-                  <div className="mt-6 space-y-4 border-t border-border pt-6">
-                    <h3 className="text-base font-semibold text-foreground">Sticker Range</h3>
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium">Starting sticker number</Label>
-                        <Input
-                          type="number"
-                          min={1}
-                          step={1}
-                          value={stickerRangeStart}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setStickerRangeStart(v)
-                            if (qtyNum > 0) {
-                              const n = parseInt(v, 10)
-                              if (!Number.isNaN(n)) setStickerRangeEnd(String(n + qtyNum - 1))
-                            }
-                          }}
-                          className={editInputClass}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium">Ending Sticker Number</Label>
-                        <Input
-                          type="number"
-                          value={stickerRangeEnd}
-                          onChange={(e) => setStickerRangeEnd(e.target.value)}
-                          className={editInputClass}
-                        />
-                      </div>
-                    </div>
                   </div>
                 )}
               </div>

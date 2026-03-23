@@ -38,6 +38,7 @@ import { Truck, Search, Printer, Eye, FileOutput } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
+import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "view" | "generate" | null
 
@@ -60,7 +61,7 @@ export function GatePassPage() {
   const gatePasses = data.gatePasses
 
   const filtered = React.useMemo(() => {
-    return gatePasses.filter((g) => {
+    const list = gatePasses.filter((g) => {
       const matchSearch =
         !searchTerm ||
         (g.challan_number ?? g.challan_id).toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -73,6 +74,11 @@ export function GatePassPage() {
       const matchStatus = filterStatus === "all" || g.gate_pass_status === filterStatus || g.process_status === filterStatus
       return matchSearch && matchCustomer && matchCategory && matchStatus
     })
+    return sortLatestFirst(
+      list,
+      (g) => latestOfDates(g.timestamp, g.gate_pass_date, g.challan_date_time, g.created_at),
+      (g) => g.gatepass_id
+    )
   }, [gatePasses, searchTerm, filterCustomer, filterCategory, filterStatus])
 
   const uniqueCustomers = React.useMemo(() => {
