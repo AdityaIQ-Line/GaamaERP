@@ -59,6 +59,8 @@ export interface DataContextValue extends DataState {
   addProcessTracking: (p: Omit<ProcessTracking, "id">) => ProcessTracking
   updateProcessTracking: (id: string, p: Partial<ProcessTracking>) => void
   getProcessTrackingByOrderId: (salesOrderId: string) => ProcessTracking | undefined
+  /** Next challan number using the same rule as addChallan (create-form preview). */
+  getNextChallanNumber: () => string
   addChallan: (c: Omit<Challan, "challan_id">) => Challan
   updateChallan: (id: string, c: Partial<Challan>) => void
   getChallan: (id: string) => Challan | undefined
@@ -327,12 +329,16 @@ export function DataProvider({
     salesOrderId
   ) => state.processTrackings.find((p) => p.sales_order_id === salesOrderId)
 
-  const addChallan: DataContextValue["addChallan"] = (c) => {
+  const getNextChallanNumber: DataContextValue["getNextChallanNumber"] = () => {
     const year = new Date().getFullYear()
     const sameYear = state.challans.filter(
       (x) => x.dispatch_date && x.dispatch_date.startsWith(String(year))
     ).length
-    const challan_number = `CH-${year}-${String(sameYear + 1).padStart(3, "0")}`
+    return `CH-${year}-${String(sameYear + 1).padStart(3, "0")}`
+  }
+
+  const addChallan: DataContextValue["addChallan"] = (c) => {
+    const challan_number = getNextChallanNumber()
     const challan: Challan = {
       ...c,
       challan_id: generateId("ch"),
@@ -441,6 +447,7 @@ export function DataProvider({
     addProcessTracking,
     updateProcessTracking,
     getProcessTrackingByOrderId,
+    getNextChallanNumber,
     addChallan,
     updateChallan,
     getChallan,

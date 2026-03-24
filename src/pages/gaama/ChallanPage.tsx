@@ -17,7 +17,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -39,6 +38,7 @@ import { useData, canAccess } from "@/context/DataContext"
 import type { Challan, ChallanItem, GRN } from "@/lib/gaama-types"
 import { FileText, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
@@ -46,6 +46,26 @@ import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type Tab = "pending" | "delivery"
 type ModalMode = "create" | "edit" | "view" | null
+
+const DISPATCH_THROUGH_OPTIONS = ["Vehicle", "Courier", "Road transport", "Rail", "Air"] as const
+
+function parseGrnQty(s: string | undefined): number {
+  return parseFloat(String(s ?? "").replace(/,/g, "")) || 0
+}
+
+function formatInr(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function grnLineAmountBeforeGst(g: GRN): number {
+  const qty = parseGrnQty(g.received_quantity)
+  const rate = parseFloat(g.rate ?? "0") || 0
+  if (rate > 0 && qty > 0) return rate * qty
+  const total = parseFloat(g.total_amount ?? g.pricing ?? "0") || 0
+  const gstPct = parseFloat(g.gst_percentage ?? "0") || 0
+  if (total > 0 && gstPct >= 0) return total / (1 + gstPct / 100)
+  return total
+}
 
 function exportChallansToCsv(rows: Array<Record<string, string | number>>, filename: string) {
   if (rows.length === 0) return
@@ -92,6 +112,32 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;")
 }
 
+function formatDateReadable(iso: string | undefined): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" })
+}
+
+function numberToWordsEn(num: number): string {
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+  const two = (n: number): string => (n < 20 ? a[n] : `${b[Math.floor(n / 10)]}${n % 10 ? ` ${a[n % 10]}` : ""}`)
+  const three = (n: number): string => {
+    if (n < 100) return two(n)
+    const rem = n % 100
+    return `${a[Math.floor(n / 100)]} Hundred${rem ? ` ${two(rem)}` : ""}`
+  }
+  if (!Number.isFinite(num) || num <= 0) return "Zero"
+  if (num < 1000) return three(num)
+  if (num < 1000000) {
+    const rem = num % 1000
+    return `${three(Math.floor(num / 1000))} Thousand${rem ? ` ${three(rem)}` : ""}`
+  }
+  const rem = num % 1000000
+  return `${three(Math.floor(num / 1000000))} Million${rem ? ` ${numberToWordsEn(rem)}` : ""}`
+}
+
 export function ChallanPage() {
   const data = useData()
   const [tab, setTab] = React.useState<Tab>("pending")
@@ -106,8 +152,16 @@ export function ChallanPage() {
   )
   const [createVehicleDetails, setCreateVehicleDetails] = React.useState("")
   const [createDriverName, setCreateDriverName] = React.useState("")
-  const [createBaseAmount, setCreateBaseAmount] = React.useState("")
-  const [createGstPercentage, setCreateGstPercentage] = React.useState("18")
+  const [createActiveGrnId, setCreateActiveGrnId] = React.useState<string | null>(null)
+  const [createFinalDispatchQty, setCreateFinalDispatchQty] = React.useState<Record<string, string>>({})
+  const [createPartialDispatch, setCreatePartialDispatch] = React.useState<Record<string, boolean>>({})
+  const [createDeliveryNoteDate, setCreateDeliveryNoteDate] = React.useState(() =>
+    new Date().toISOString().slice(0, 10)
+  )
+  const [createTermsOfDelivery, setCreateTermsOfDelivery] = React.useState("")
+  const [createDispatchedThrough, setCreateDispatchedThrough] = React.useState("Vehicle")
+  const [createOtherReferences, setCreateOtherReferences] = React.useState("")
+  const [createHsnSacCode, setCreateHsnSacCode] = React.useState("")
 
   const [editForm, setEditForm] = React.useState<Partial<Challan>>({})
 
@@ -136,17 +190,65 @@ export function ChallanPage() {
   }, [grns, grnIdsInChallans])
 
   const openCreateFromGrns = (grnIds: string[]) => {
-    setSelectedGrnIds(new Set(grnIds))
+    const ids = [...grnIds]
+    setSelectedGrnIds(new Set(ids))
+    setCreateActiveGrnId(ids[0] ?? null)
+    const initQty: Record<string, string> = {}
+    for (const id of ids) {
+      const g = data.getGRN(id)
+      if (g) initQty[id] = String(g.received_quantity ?? "").trim() || "0"
+    }
+    setCreateFinalDispatchQty(initQty)
+    setCreatePartialDispatch({})
     setCreateShippingAddress("")
     setCreateDispatchDate(new Date().toISOString().slice(0, 10))
+    setCreateDeliveryNoteDate(new Date().toISOString().slice(0, 10))
+    setCreateTermsOfDelivery("")
+    setCreateDispatchedThrough("Vehicle")
+    setCreateOtherReferences("")
+    setCreateHsnSacCode("")
     setCreateVehicleDetails("")
     setCreateDriverName("")
-    setCreateBaseAmount("")
-    setCreateGstPercentage("18")
     setMode("create")
   }
 
   const selectedGrnList = Array.from(selectedGrnIds)
+  const selectedGrnKey = selectedGrnList.join("|")
+
+  React.useEffect(() => {
+    if (mode !== "create" || selectedGrnKey === "") return
+    const list = selectedGrnKey.split("|").filter(Boolean)
+    if (list.length === 0) return
+    setCreateActiveGrnId((prev) => {
+      if (prev && list.includes(prev)) return prev
+      return list[0]!
+    })
+  }, [mode, selectedGrnKey])
+
+  const removeGrnFromCreate = (grnId: string) => {
+    setSelectedGrnIds((prev) => {
+      const n = new Set(prev)
+      n.delete(grnId)
+      return n
+    })
+    setCreateFinalDispatchQty((p) => {
+      const { [grnId]: _, ...rest } = p
+      return rest
+    })
+    setCreatePartialDispatch((p) => {
+      const { [grnId]: _, ...rest } = p
+      return rest
+    })
+  }
+
+  React.useEffect(() => {
+    if (mode !== "create") return
+    if (selectedGrnIds.size === 0) {
+      setMode(null)
+      toast.message("Add GRNs from Pending to continue.")
+    }
+  }, [mode, selectedGrnIds.size])
+
   const firstGrn = selectedGrnList.length > 0 ? data.getGRN(selectedGrnList[0]) : undefined
   const customerForAddress = firstGrn?.customer_id ? data.getCustomer(firstGrn.customer_id) : undefined
   const shippingOptions = customerForAddress?.shipping_addresses_typed?.length
@@ -161,22 +263,58 @@ export function ChallanPage() {
       toast.error("Select at least one GRN.")
       return
     }
+    if (!createDeliveryNoteDate.trim()) {
+      toast.error("Delivery Note Date is required.")
+      return
+    }
+    if (!createTermsOfDelivery.trim()) {
+      toast.error("Terms of Delivery is required.")
+      return
+    }
+    if (!createDispatchedThrough.trim()) {
+      toast.error("Dispatch Through is required.")
+      return
+    }
+    if (!createHsnSacCode.trim()) {
+      toast.error("HSN/SAC Code is required.")
+      return
+    }
     if (!createShippingAddress.trim()) {
       toast.error("Select or enter shipping address.")
       return
     }
     const grnList = selectedGrnList.map((id) => data.getGRN(id)).filter(Boolean) as GRN[]
+    for (const g of grnList) {
+      const recv = parseGrnQty(g.received_quantity)
+      const finalQ = parseGrnQty(createFinalDispatchQty[g.grn_id] ?? g.received_quantity)
+      if (finalQ <= 0) {
+        toast.error(`Final dispatch quantity must be greater than 0 for ${g.grn_number ?? g.grn_id}.`)
+        return
+      }
+      if (finalQ > recv) {
+        toast.error(`Final dispatch cannot exceed received quantity for ${g.grn_number ?? g.grn_id}.`)
+        return
+      }
+    }
     const soId = grnList[0]?.sales_order_id ?? ""
     const so = data.getSalesOrder(soId)
     const items: ChallanItem[] = grnList.map((g) => ({
       item_id: `ci_${g.grn_id}`,
       category_id: g.category_id ?? "",
-      quantity: parseFloat(g.received_quantity ?? "0") || 0,
+      quantity: parseGrnQty(createFinalDispatchQty[g.grn_id] ?? g.received_quantity),
     }))
-    const base = parseFloat(createBaseAmount) || 0
-    const gstPct = parseFloat(createGstPercentage) || 0
-    const gstAmt = (base * gstPct) / 100
-    const total = base + gstAmt
+    const totalDispatched = items.reduce((s, it) => s + it.quantity, 0)
+    let computedBase = 0
+    for (const g of grnList) {
+      const recv = parseGrnQty(g.received_quantity)
+      const finalQ = parseGrnQty(createFinalDispatchQty[g.grn_id] ?? g.received_quantity)
+      if (recv <= 0) continue
+      computedBase += grnLineAmountBeforeGst(g) * (finalQ / recv)
+    }
+    const gstPctStr = grnList.find((g) => g.gst_percentage && String(g.gst_percentage).trim() !== "")?.gst_percentage ?? "0"
+    const gstPct = parseFloat(gstPctStr) || 0
+    const gstAmt = (computedBase * gstPct) / 100
+    const total = computedBase + gstAmt
     data.addChallan({
       sales_order_id: soId,
       sales_order_number: so?.sales_order_number ?? so?.order_number,
@@ -184,16 +322,22 @@ export function ChallanPage() {
       customer_id: grnList[0]?.customer_id,
       customer_name: grnList[0]?.customer_name,
       product_category: grnList[0]?.category_name,
-      quantity: String(grnList.reduce((s, g) => s + (parseFloat(g.received_quantity ?? "0") || 0), 0)),
+      quantity: String(totalDispatched),
       units: grnList[0]?.unit,
       dispatch_date: new Date(createDispatchDate).toISOString(),
+      delivery_note_date: createDeliveryNoteDate,
+      customer_order_date: so?.order_date?.slice(0, 10) ?? undefined,
+      terms_of_delivery: createTermsOfDelivery.trim(),
+      dispatched_through: createDispatchedThrough,
+      delivery_note: createOtherReferences.trim() || undefined,
+      hsn_sac_code: createHsnSacCode.trim(),
       items,
       shipping_address: createShippingAddress,
       status: "Generated",
-      vehicle_details: createVehicleDetails,
+      vehicle_details: createVehicleDetails || undefined,
       driver_name: createDriverName,
-      base_amount: createBaseAmount || undefined,
-      gst_percentage: createGstPercentage || undefined,
+      base_amount: String(computedBase.toFixed(2)),
+      gst_percentage: gstPctStr !== "0" ? gstPctStr : undefined,
       gst_amount: String(gstAmt.toFixed(2)),
       total_amount: String(total.toFixed(2)),
     })
@@ -244,19 +388,342 @@ export function ChallanPage() {
     setSelectedGrnIds(new Set())
   }
 
+  const activeGrnForSummary =
+    (createActiveGrnId ? data.getGRN(createActiveGrnId) : undefined) || firstGrn
+  const summarySo = activeGrnForSummary?.sales_order_id
+    ? data.getSalesOrder(activeGrnForSummary.sales_order_id)
+    : undefined
+  const soOrderedQty =
+    Number(summarySo?.quantity ?? summarySo?.items?.[0]?.quantity ?? 0) || 0
+  const createTitleSo =
+    activeGrnForSummary?.sales_order_number ??
+    summarySo?.sales_order_number ??
+    summarySo?.order_number ??
+    "—"
+
+  const readOnlyMuted =
+    "h-9 cursor-not-allowed rounded-md border-transparent bg-muted text-muted-foreground opacity-90"
+
+  const createFormTotals = (() => {
+    let totalFinal = 0
+    let totalRecv = 0
+    let totalRemainingAmt = 0
+    for (const id of selectedGrnList) {
+      const g = data.getGRN(id)
+      if (!g) continue
+      const recv = parseGrnQty(g.received_quantity)
+      const finalQ = parseGrnQty(createFinalDispatchQty[id] ?? g.received_quantity)
+      const lineAmt = grnLineAmountBeforeGst(g)
+      totalFinal += finalQ
+      totalRecv += recv
+      if (recv > 0) totalRemainingAmt += lineAmt * ((recv - finalQ) / recv)
+    }
+    return { totalFinal, totalRecv, totalRemainingAmt }
+  })()
+
   const challanCreateForm = (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <form onSubmit={handleGenerateChallan}>
-        <FormSection title="Selected GRNs" noSeparator>
-          <p className="text-sm text-muted-foreground py-2">{selectedGrnList.length} GRN(s) selected.</p>
-        </FormSection>
-        <FormSection title="Shipping & Dispatch" noSeparator>
-          <div className="space-y-4 py-4">
+    <div className="space-y-6">
+      <form onSubmit={handleGenerateChallan} className="space-y-6">
+        {/* Order summary — Pencil Ipx7D */}
+        <div className="rounded-md border border-border bg-card p-5 shadow-sm md:p-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Product Category</p>
+              <p className="text-sm font-medium text-foreground">
+                {activeGrnForSummary?.category_name ?? "—"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Product Name</p>
+              <p className="text-sm font-medium text-foreground">
+                {activeGrnForSummary?.product_name ?? "—"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Total Ordered Quantity</p>
+              <p className="text-sm font-medium text-foreground">{soOrderedQty || "—"}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground">Units</p>
+              <p className="text-sm font-medium text-foreground">
+                {summarySo?.unit ?? activeGrnForSummary?.unit ?? "—"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Select GRN */}
+        <div className="rounded-md border border-border bg-card p-5 shadow-sm md:p-6 space-y-6">
+          <h2 className="text-lg font-semibold text-foreground">Select GRN</h2>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="min-w-0 flex-1 space-y-1">
+              <Label className="text-sm font-medium">Choose Active GRN</Label>
+              <Select
+                value={createActiveGrnId ?? selectedGrnList[0] ?? ""}
+                onValueChange={(v) => setCreateActiveGrnId(v)}
+              >
+                <SelectTrigger className="h-9 rounded-md shadow-none">
+                  <SelectValue placeholder="Select GRN" />
+                </SelectTrigger>
+                <SelectContent>
+                  {selectedGrnList.map((id) => {
+                    const g = data.getGRN(id)
+                    return (
+                      <SelectItem key={id} value={id}>
+                        {g?.grn_number ?? g?.grn_id ?? id}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              type="button"
+              variant="default"
+              className="h-9 rounded-md shadow-none sm:shrink-0"
+              onClick={() => {
+                setMode(null)
+                setTab("pending")
+              }}
+            >
+              Add GRN
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto rounded-md border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="whitespace-nowrap text-xs font-medium">GRN No</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Received Quantity</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Gross Weight (Kg)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Net Weight (Kg)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Amount (₹)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">GST %</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Total Amount (₹)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium text-destructive">
+                    * Final Dispatch Quantity
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Dispatch Quantity</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Pricing (₹)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Partial Dispatch</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedGrnList.map((id) => {
+                  const g = data.getGRN(id)
+                  if (!g) return null
+                  const recv = parseGrnQty(g.received_quantity)
+                  const finalStr = createFinalDispatchQty[id] ?? g.received_quantity ?? ""
+                  const finalQ = parseGrnQty(finalStr)
+                  const remaining = Math.max(0, recv - finalQ)
+                  const lineAmt = grnLineAmountBeforeGst(g)
+                  const remainingPrice = recv > 0 ? lineAmt * (remaining / recv) : 0
+                  const gstPct = g.gst_percentage ?? "—"
+                  const totalDisplay =
+                    g.total_amount != null && g.total_amount !== ""
+                      ? formatInr(parseFloat(g.total_amount) || 0)
+                      : "—"
+                  return (
+                    <TableRow key={id}>
+                      <TableCell className="whitespace-nowrap font-medium text-primary">
+                        {g.grn_number ?? g.grn_id}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {g.received_quantity ?? "—"} {g.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{g.gross_weight ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">{g.net_weight ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {formatInr(grnLineAmountBeforeGst(g))}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{gstPct}</TableCell>
+                      <TableCell className="whitespace-nowrap font-semibold">{totalDisplay}</TableCell>
+                      <TableCell className="min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={`challan-final-qty-${id}`}
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="h-9 rounded-md shadow-none"
+                            value={finalStr}
+                            onChange={(e) =>
+                              setCreateFinalDispatchQty((p) => ({ ...p, [id]: e.target.value }))
+                            }
+                          />
+                          <span className="shrink-0 text-xs text-muted-foreground">{g.unit ?? ""}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-emerald-600 dark:text-emerald-400">
+                        {remaining.toFixed(2)} {g.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{formatInr(remainingPrice)}</TableCell>
+                      <TableCell>
+                        <Switch
+                          checked={!!createPartialDispatch[id]}
+                          onCheckedChange={(c) =>
+                            setCreatePartialDispatch((p) => ({ ...p, [id]: !!c }))
+                          }
+                          aria-label={`Partial dispatch for ${g.grn_number ?? id}`}
+                        />
+                      </TableCell>
+                      <TableCell className="text-right whitespace-nowrap">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="rounded-md"
+                          onClick={() =>
+                            document.getElementById(`challan-final-qty-${id}`)?.focus()
+                          }
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="sm"
+                          className="ml-1 rounded-md"
+                          onClick={() => removeGrnFromCreate(id)}
+                        >
+                          Remove
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="rounded-md border border-primary/25 bg-primary/5 px-4 py-3 text-sm text-primary">
+              <p className="font-medium">Dispatch totals</p>
+              <p className="mt-1 text-muted-foreground">
+                Final dispatch (sum):{" "}
+                <span className="font-medium text-foreground">{createFormTotals.totalFinal}</span>
+              </p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/30 px-4 py-3 text-sm">
+              <p className="font-medium text-foreground">Remaining</p>
+              <p className="mt-1 text-muted-foreground">
+                Quantity (sum of remaining):{" "}
+                <span className="font-medium text-foreground">
+                  {Math.max(0, createFormTotals.totalRecv - createFormTotals.totalFinal).toFixed(2)}
+                </span>
+              </p>
+              <p className="text-muted-foreground">
+                Pricing (est.):{" "}
+                <span className="font-medium text-foreground">
+                  {formatInr(createFormTotals.totalRemainingAmt)}
+                </span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Additional Details */}
+        <div className="rounded-md border border-border bg-card p-5 shadow-sm md:p-6 space-y-6">
+          <h2 className="text-lg font-semibold text-foreground">Additional Details</h2>
+
+          <div className="rounded-md border border-primary/25 bg-primary/5 p-4 space-y-2">
+            <Label className="text-sm font-medium text-destructive">
+              * Customer Challan Numbers (from GRNs)
+            </Label>
+            <div className="flex flex-wrap gap-2">
+              {selectedGrnList.some((id) => data.getGRN(id)?.customer_challan_number?.trim()) ? (
+                selectedGrnList.map((id) => {
+                  const g = data.getGRN(id)
+                  const ref = g?.customer_challan_number?.trim()
+                  if (!ref || !g) return null
+                  return (
+                    <Badge key={id} variant="secondary" className="font-normal">
+                      {g.grn_number ?? id}: {ref}
+                    </Badge>
+                  )
+                })
+              ) : (
+                <span className="text-sm text-muted-foreground">—</span>
+              )}
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
-              <Label>Shipping Address *</Label>
+              <Label>
+                <span className="text-destructive">*</span> Challan Number
+              </Label>
+              <Input readOnly value={data.getNextChallanNumber()} className={readOnlyMuted} />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Delivery Note Date
+              </Label>
+              <Input
+                type="date"
+                required
+                value={createDeliveryNoteDate}
+                onChange={(e) => setCreateDeliveryNoteDate(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Terms of Delivery
+              </Label>
+              <Input
+                value={createTermsOfDelivery}
+                onChange={(e) => setCreateTermsOfDelivery(e.target.value)}
+                placeholder="e.g. Advance"
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Dispatch Through
+              </Label>
+              <Select value={createDispatchedThrough} onValueChange={setCreateDispatchedThrough}>
+                <SelectTrigger className="h-9 rounded-md shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DISPATCH_THROUGH_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Other References</Label>
+              <Textarea
+                value={createOtherReferences}
+                onChange={(e) => setCreateOtherReferences(e.target.value)}
+                placeholder="Enter other references"
+                rows={3}
+                className="min-h-[80px] resize-none rounded-md"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> HSN/SAC Code
+              </Label>
+              <Input
+                value={createHsnSacCode}
+                onChange={(e) => setCreateHsnSacCode(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Shipping Address
+              </Label>
               {shippingOptions.length > 0 ? (
                 <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-md shadow-none">
                     <SelectValue placeholder="Select address" />
                   </SelectTrigger>
                   <SelectContent>
@@ -273,37 +740,49 @@ export function ChallanPage() {
                 onChange={(e) => setCreateShippingAddress(e.target.value)}
                 placeholder="Shipping address"
                 rows={2}
+                className="rounded-md"
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>Dispatch Date</Label>
-                <Input type="date" value={createDispatchDate} onChange={(e) => setCreateDispatchDate(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Vehicle Details</Label>
-                <Input value={createVehicleDetails} onChange={(e) => setCreateVehicleDetails(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Driver Name</Label>
-                <Input value={createDriverName} onChange={(e) => setCreateDriverName(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>Base Amount</Label>
-                <Input type="number" step="any" value={createBaseAmount} onChange={(e) => setCreateBaseAmount(e.target.value)} />
-              </div>
-              <div className="space-y-2">
-                <Label>GST %</Label>
-                <Input type="number" value={createGstPercentage} onChange={(e) => setCreateGstPercentage(e.target.value)} />
-              </div>
+            <div className="space-y-2">
+              <Label>Dispatch Date</Label>
+              <Input
+                type="date"
+                value={createDispatchDate}
+                onChange={(e) => setCreateDispatchDate(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Vehicle Details</Label>
+              <Input
+                value={createVehicleDetails}
+                onChange={(e) => setCreateVehicleDetails(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Driver Name</Label>
+              <Input
+                value={createDriverName}
+                onChange={(e) => setCreateDriverName(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
             </div>
           </div>
-        </FormSection>
-        <div className="flex justify-end gap-2 border-t pt-4">
-          <Button type="button" variant="outline" onClick={cancelCreateChallan}>
-            Cancel
-          </Button>
-          <Button type="submit">Generate Challan</Button>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-md shadow-none"
+              onClick={cancelCreateChallan}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="h-9 rounded-md px-8 shadow-none">
+              Generate Challan
+            </Button>
+          </div>
         </div>
       </form>
     </div>
@@ -314,7 +793,11 @@ export function ChallanPage() {
       <PageShell>
         <div className="flex-1 overflow-auto">
           <div className="w-full h-full">
-            <PageHeaderWithBack title="Generate Challan" noBorder backButton={{ onClick: cancelCreateChallan }} />
+            <PageHeaderWithBack
+              title={`Create Challan | ${createTitleSo}`}
+              noBorder
+              backButton={{ onClick: cancelCreateChallan }}
+            />
             <div className="space-y-4 px-6 py-4 h-full">
             {challanCreateForm}
             </div>
