@@ -10,13 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -347,10 +340,36 @@ export function ChallanPage() {
     setTab("delivery")
   }
 
+  const [printAfterViewOpen, setPrintAfterViewOpen] = React.useState(false)
+
+  const closeChallanDetail = React.useCallback(() => {
+    setMode(null)
+    setSelectedChallanId(null)
+    setPrintAfterViewOpen(false)
+  }, [])
+
+  React.useEffect(() => {
+    if (mode !== "view" || !printAfterViewOpen || !selectedChallanId) return
+    if (!data.getChallan(selectedChallanId)) return
+    const t = window.setTimeout(() => {
+      window.print()
+      setPrintAfterViewOpen(false)
+    }, 450)
+    return () => window.clearTimeout(t)
+  }, [mode, printAfterViewOpen, selectedChallanId])
+
   const openView = (c: Challan) => {
+    setPrintAfterViewOpen(false)
     setSelectedChallanId(c.challan_id)
     setEditForm(c)
     setMode("view")
+  }
+
+  const openViewThenPrint = (c: Challan) => {
+    setSelectedChallanId(c.challan_id)
+    setEditForm(c)
+    setMode("view")
+    setPrintAfterViewOpen(true)
   }
 
   const openEdit = (c: Challan) => {
@@ -365,6 +384,7 @@ export function ChallanPage() {
     data.updateChallan(selectedChallanId, editForm)
     toast.success("Challan updated.")
     setMode(null)
+    setSelectedChallanId(null)
   }
 
   const filteredChallans = React.useMemo(() => {
@@ -420,6 +440,185 @@ export function ChallanPage() {
     }
     return { totalFinal, totalRecv, totalRemainingAmt }
   })()
+
+  const renderChallanJobWorkDocument = (c: Challan) => {
+    const grnRefs = (c.grn_numbers ?? "").split(",").map((s) => s.trim()).filter(Boolean)
+    const relatedGrns = grnRefs
+      .map((ref) => data.grns.find((g) => (g.grn_number ?? g.grn_id) === ref))
+      .filter((g): g is GRN => Boolean(g))
+    const rows = relatedGrns.length > 0 ? relatedGrns : []
+    const base = parseFloat(c.base_amount ?? "0") || 0
+    const gst = parseFloat(c.gst_amount ?? "0") || 0
+    const total = parseFloat(c.total_amount ?? "0") || base + gst
+    const amountWords = `Rupees ${numberToWordsEn(Math.round(total))} Only`
+    return (
+      <div className="rounded-md border border-border bg-background shadow-sm">
+        <div className="border-b border-border px-6 py-5 sm:px-8 sm:py-6">
+          <h1 className="text-center text-xl font-bold tracking-wide sm:text-2xl">JOB WORK CHALLAN</h1>
+        </div>
+
+        <div className="m-4 border border-foreground/80 p-4 sm:m-8">
+          <div className="flex items-start gap-3">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-sm bg-primary text-lg font-bold text-primary-foreground">
+              Q
+            </div>
+            <div className="min-w-0 space-y-1 text-sm">
+              <p className="text-lg font-bold leading-tight sm:text-xl">QLine Healthcare Pvt. Ltd</p>
+              <p className="text-muted-foreground">C-7, Amausi Industrial Area, Nadarganj, Lucknow, UP-226008</p>
+              <p className="text-muted-foreground">GSTIN: 09AAKFP4281G1ZY | PAN: AAKFP4281G</p>
+              <p className="text-muted-foreground">Phone: +91 9876543210 | Email: info@qlinehealthcare.com</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-4 grid grid-cols-1 border border-foreground/80 sm:mx-8 lg:grid-cols-2">
+          <div className="space-y-2 border-foreground/80 p-4 lg:border-r">
+            <p className="text-lg font-bold">Dispatch To</p>
+            <p className="text-lg font-semibold">{c.customer_name ?? "—"}</p>
+            <p className="text-sm text-muted-foreground">{c.shipping_address ?? "—"}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-y-3 p-4 text-sm">
+            <div>
+              <p className="font-semibold">Challan No.</p>
+              <p>{c.challan_number ?? c.challan_id}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Challan Date</p>
+              <p>{formatDateReadable(c.created_at ?? c.dispatch_date)}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Sales Order No.</p>
+              <p>{c.sales_order_number ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold">GRN No(s).</p>
+              <p>{c.grn_numbers ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Delivery Note Date</p>
+              <p>{formatDateReadable(c.delivery_note_date ?? c.dispatch_date)}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Customer Order Date</p>
+              <p>{c.customer_order_date ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Dispatched Through</p>
+              <p>{c.dispatched_through ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Terms of Delivery</p>
+              <p>{c.terms_of_delivery ?? "—"}</p>
+            </div>
+            <div>
+              <p className="font-semibold">Status</p>
+              <Badge variant="secondary">{c.status ?? "—"}</Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-4 mt-0 overflow-x-auto border-x border-b border-foreground/80 sm:mx-8">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/40">
+                <TableHead>Sl No.</TableHead>
+                <TableHead>Description of Services</TableHead>
+                <TableHead>HSN/SAC</TableHead>
+                <TableHead>Gross Weight (Kg)</TableHead>
+                <TableHead>Net Weight (Kg)</TableHead>
+                <TableHead>Quantity</TableHead>
+                <TableHead>Unit</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length > 0 ? (
+                rows.map((g, i) => (
+                  <TableRow key={g.grn_id}>
+                    <TableCell>{i + 1}</TableCell>
+                    <TableCell className="font-medium">{`Irradiation Services - ${g.product_name ?? g.category_name ?? "Items"}`}</TableCell>
+                    <TableCell>{c.hsn_sac_code ?? "—"}</TableCell>
+                    <TableCell>{g.gross_weight ?? "—"}</TableCell>
+                    <TableCell>{g.net_weight ?? "—"}</TableCell>
+                    <TableCell>
+                      {(c.items?.[i]?.quantity ?? (parseFloat(g.received_quantity ?? "0") || 0)).toFixed(2)}
+                    </TableCell>
+                    <TableCell>{g.unit ?? c.units ?? "—"}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell>1</TableCell>
+                  <TableCell className="font-medium">Irradiation Services</TableCell>
+                  <TableCell>{c.hsn_sac_code ?? "—"}</TableCell>
+                  <TableCell>—</TableCell>
+                  <TableCell>—</TableCell>
+                  <TableCell>{c.quantity ?? "—"}</TableCell>
+                  <TableCell>{c.units ?? "—"}</TableCell>
+                </TableRow>
+              )}
+              <TableRow className="bg-muted/30">
+                <TableCell />
+                <TableCell className="text-right font-semibold">Total</TableCell>
+                <TableCell />
+                <TableCell>—</TableCell>
+                <TableCell>—</TableCell>
+                <TableCell className="font-semibold">{c.quantity ?? "—"}</TableCell>
+                <TableCell className="font-semibold">{c.units ?? "—"}</TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="mx-4 flex flex-col gap-4 border-x border-b border-foreground/80 p-4 sm:mx-8 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="text-sm">
+            <p className="font-semibold">Amount in words:</p>
+            <p>{amountWords}</p>
+          </div>
+          <div className="w-full max-w-[360px] space-y-2 text-sm sm:shrink-0">
+            <div className="flex justify-between">
+              <span>Base Amount:</span>
+              <span className="font-semibold">{formatInr(base)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>GST:</span>
+              <span className="font-semibold">{formatInr(gst)}</span>
+            </div>
+            <div className="flex justify-between border-t border-border pt-2 text-base font-bold">
+              <span>Total Amount:</span>
+              <span>{formatInr(total)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mx-4 border-x border-b border-foreground/80 p-4 text-sm sm:mx-8">
+          <p className="mb-2 text-base font-bold">Terms & Conditions:</p>
+          <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
+            <li>Goods once dispatched will not be taken back.</li>
+            <li>Please collect the products within 48 hours after processing.</li>
+            <li>This challan is for job work purposes only.</li>
+            <li>Subject to Lucknow jurisdiction.</li>
+          </ul>
+        </div>
+
+        <div className="mx-4 grid grid-cols-1 border-x border-b border-foreground/80 sm:mx-8 md:grid-cols-2">
+          <div className="border-foreground/80 p-4 text-sm md:border-r">
+            <p className="font-semibold">Receiver&apos;s Signature</p>
+            <p className="mt-8 text-muted-foreground">Name: _________________</p>
+            <p className="text-muted-foreground">Date: _________________</p>
+          </div>
+          <div className="p-4 text-right text-sm">
+            <p>for QLine Healthcare Pvt Ltd</p>
+            <p className="mt-12 font-semibold">Authorised Signatory</p>
+          </div>
+        </div>
+
+        <div className="mx-4 mb-4 border-x border-b border-foreground/80 p-3 text-center text-xs sm:mx-8 sm:mb-8">
+          <p className="font-semibold">SUBJECT TO LUCKNOW JURISDICTION</p>
+          <p>This is a Computer Generated Document</p>
+        </div>
+      </div>
+    )
+  }
 
   const challanCreateForm = (
     <div className="space-y-6">
@@ -807,6 +1006,254 @@ export function ChallanPage() {
     )
   }
 
+  if (allowed && mode === "view" && selectedChallanId) {
+    const viewChallan = data.getChallan(selectedChallanId)
+    if (!viewChallan) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <PageHeaderWithBack title="Challan" noBorder backButton={{ onClick: closeChallanDetail }} />
+            <div className="px-6 py-4 text-muted-foreground">Challan not found.</div>
+          </div>
+        </PageShell>
+      )
+    }
+    const title = `Job Work Challan - ${viewChallan.challan_number ?? viewChallan.challan_id}`
+    return (
+      <PageShell>
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="print:hidden">
+            <PageHeaderWithBack
+              title={title}
+              noBorder
+              backButton={{ onClick: closeChallanDetail }}
+              actions={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-9 rounded-md shadow-none"
+                  onClick={() => openEdit(viewChallan)}
+                >
+                  <Pencil className="mr-2 h-4 w-4" />
+                  Edit
+                </Button>
+                <Button
+                  type="button"
+                  className="h-9 rounded-md shadow-none"
+                  onClick={() => window.print()}
+                >
+                  <Printer className="mr-2 h-4 w-4" />
+                  Print
+                </Button>
+              </>
+            }
+            />
+          </div>
+          <div className="flex-1 overflow-auto bg-muted/30 print:bg-background">
+            <div className="mx-auto w-full max-w-[920px] px-4 py-6 print:max-w-none print:px-0 print:py-0">
+              {renderChallanJobWorkDocument(viewChallan)}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (allowed && mode === "edit" && selectedChallanId) {
+    const editChallan = data.getChallan(selectedChallanId)
+    if (!editChallan) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <PageHeaderWithBack title="Edit Challan" noBorder backButton={{ onClick: closeChallanDetail }} />
+            <div className="px-6 py-4 text-muted-foreground">Challan not found.</div>
+          </div>
+        </PageShell>
+      )
+    }
+    return (
+      <PageShell>
+        <div className="flex flex-1 flex-col overflow-auto">
+          <PageHeaderWithBack
+            title="Edit Challan"
+            noBorder
+            backButton={{ onClick: closeChallanDetail }}
+          />
+          <form onSubmit={handleEditSave} className="flex flex-1 flex-col">
+            <div className="flex-1 space-y-6 px-6 py-4">
+              <div className="rounded-md border border-border bg-muted/30 p-4 md:p-5">
+                <h3 className="text-base font-semibold text-foreground">Challan Information (Read-Only)</h3>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Challan Number</Label>
+                    <Input readOnly value={editForm.challan_number ?? editForm.challan_id ?? "—"} className={readOnlyMuted} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Sales Order No.</Label>
+                    <Input readOnly value={editForm.sales_order_number ?? "—"} className={readOnlyMuted} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Product Category</Label>
+                    <Input readOnly value={editForm.product_category ?? "—"} className={readOnlyMuted} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Created At</Label>
+                    <Input readOnly value={formatDateReadable(editForm.created_at ?? editForm.dispatch_date)} className={readOnlyMuted} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Total Quantity</Label>
+                    <Input readOnly value={editForm.quantity ?? "—"} className={readOnlyMuted} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Unit</Label>
+                    <Input readOnly value={editForm.units ?? "—"} className={readOnlyMuted} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-border bg-card p-4 md:p-5">
+                <h3 className="text-base font-semibold text-foreground">Customer Details (Editable)</h3>
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-1">
+                    <Label>Customer Name *</Label>
+                    <Input
+                      value={editForm.customer_name ?? ""}
+                      onChange={(e) => setEditForm((f) => ({ ...f, customer_name: e.target.value }))}
+                      className="h-9 rounded-md shadow-none"
+                    />
+                  </div>
+
+                  <div className="rounded-md border border-border bg-muted/20 p-4">
+                    <h4 className="text-sm font-semibold text-foreground">Dispatch To Address</h4>
+                    <div className="mt-3 grid gap-4 md:grid-cols-2">
+                      <div className="space-y-1 md:col-span-2">
+                        <Label>Address</Label>
+                        <Input
+                          value={editForm.dispatch_to ?? editForm.shipping_address ?? ""}
+                          onChange={(e) =>
+                            setEditForm((f) => ({
+                              ...f,
+                              dispatch_to: e.target.value,
+                              shipping_address: e.target.value,
+                            }))
+                          }
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>City</Label>
+                        <Input
+                          value={editForm.dispatch_city ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dispatch_city: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Pincode</Label>
+                        <Input
+                          value={editForm.dispatch_pincode ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dispatch_pincode: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Phone</Label>
+                        <Input
+                          value={editForm.dispatch_phone ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dispatch_phone: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Email</Label>
+                        <Input
+                          value={editForm.dispatch_email ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dispatch_email: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>GSTIN</Label>
+                        <Input
+                          value={editForm.dispatch_gstin ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, dispatch_gstin: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-md border border-border bg-muted/20 p-4">
+                    <h4 className="text-sm font-semibold text-foreground">Party Address</h4>
+                    <div className="mt-3 grid gap-4 md:grid-cols-2">
+                      <div className="space-y-1 md:col-span-2">
+                        <Label>Party Name</Label>
+                        <Input
+                          value={editForm.party ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>City</Label>
+                        <Input
+                          value={editForm.party_city ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party_city: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Pincode</Label>
+                        <Input
+                          value={editForm.party_pincode ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party_pincode: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Phone</Label>
+                        <Input
+                          value={editForm.party_phone ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party_phone: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Email</Label>
+                        <Input
+                          value={editForm.party_email ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party_email: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>GSTIN</Label>
+                        <Input
+                          value={editForm.party_gstin ?? ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, party_gstin: e.target.value }))}
+                          className="h-9 rounded-md shadow-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-border bg-background px-6 py-4">
+              <Button type="button" variant="outline" className="h-9 rounded-md shadow-none" onClick={closeChallanDetail}>
+                Cancel
+              </Button>
+              <Button type="submit" className="h-9 rounded-md shadow-none">
+                Save
+              </Button>
+            </div>
+          </form>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       {!allowed ? (
@@ -1001,7 +1448,7 @@ export function ChallanPage() {
                                   <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}>
                                     <Pencil className="h-4 w-4" />
                                   </Button>
-                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => openViewThenPrint(c)}>
                                     <Printer className="h-4 w-4" />
                                   </Button>
                                 </TableCell>
@@ -1018,191 +1465,6 @@ export function ChallanPage() {
           </div>
         </>
       )}
-
-      <Dialog open={mode === "view" || mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className={mode === "view" ? "max-w-6xl max-h-[92vh] overflow-y-auto bg-muted/30" : "max-w-lg max-h-[90vh] overflow-y-auto"}>
-          <DialogHeader>
-            <DialogTitle>{mode === "view" ? "Challan Details" : "Edit Challan"}</DialogTitle>
-          </DialogHeader>
-          {mode === "view" && selectedChallanId && (() => {
-            const c = data.getChallan(selectedChallanId)
-            if (!c) return null
-            const grnRefs = (c.grn_numbers ?? "").split(",").map((s) => s.trim()).filter(Boolean)
-            const relatedGrns = grnRefs
-              .map((ref) => data.grns.find((g) => (g.grn_number ?? g.grn_id) === ref))
-              .filter((g): g is GRN => Boolean(g))
-            const rows = relatedGrns.length > 0 ? relatedGrns : []
-            const base = parseFloat(c.base_amount ?? "0") || 0
-            const gst = parseFloat(c.gst_amount ?? "0") || 0
-            const total = parseFloat(c.total_amount ?? "0") || base + gst
-            const amountWords = `Rupees ${numberToWordsEn(Math.round(total))} Only`
-            return (
-              <div className="py-2">
-                <div className="mx-auto w-full max-w-[880px] rounded-md border border-border bg-background shadow-sm">
-                  <div className="border-b border-border px-8 py-6">
-                    <h1 className="text-center text-2xl font-bold tracking-wide">JOB WORK CHALLAN</h1>
-                  </div>
-
-                  <div className="m-8 border border-foreground/80 p-4">
-                    <div className="flex items-start gap-3">
-                      <div className="grid h-12 w-12 place-items-center rounded-sm bg-primary text-lg font-bold text-primary-foreground">Q</div>
-                      <div className="space-y-1 text-sm">
-                        <p className="text-xl font-bold leading-none">QLine Healthcare Pvt. Ltd</p>
-                        <p className="text-muted-foreground">C-7, Amausi Industrial Area, Nadarganj, Lucknow, UP-226008</p>
-                        <p className="text-muted-foreground">GSTIN: 09AAKFP4281G1ZY | PAN: AAKFP4281G</p>
-                        <p className="text-muted-foreground">Phone: +91 9876543210 | Email: info@qlinehealthcare.com</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mx-8 grid grid-cols-2 border border-foreground/80">
-                    <div className="space-y-2 border-r border-foreground/80 p-4">
-                      <p className="text-lg font-bold">Dispatch To</p>
-                      <p className="text-lg font-semibold">{c.customer_name ?? "—"}</p>
-                      <p className="text-sm text-muted-foreground">{c.shipping_address ?? "—"}</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-y-3 p-4 text-sm">
-                      <div><p className="font-semibold">Challan No.</p><p>{c.challan_number ?? c.challan_id}</p></div>
-                      <div><p className="font-semibold">Challan Date</p><p>{formatDateReadable(c.created_at ?? c.dispatch_date)}</p></div>
-                      <div><p className="font-semibold">Sales Order No.</p><p>{c.sales_order_number ?? "—"}</p></div>
-                      <div><p className="font-semibold">GRN No(s).</p><p>{c.grn_numbers ?? "—"}</p></div>
-                      <div><p className="font-semibold">Delivery Note Date</p><p>{formatDateReadable(c.delivery_note_date ?? c.dispatch_date)}</p></div>
-                      <div><p className="font-semibold">Customer Order Date</p><p>{c.customer_order_date ?? "—"}</p></div>
-                      <div><p className="font-semibold">Dispatched Through</p><p>{c.dispatched_through ?? "—"}</p></div>
-                      <div><p className="font-semibold">Terms of Delivery</p><p>{c.terms_of_delivery ?? "—"}</p></div>
-                      <div>
-                        <p className="font-semibold">Status</p>
-                        <Badge variant="secondary">{c.status ?? "—"}</Badge>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mx-8 mt-0 overflow-hidden border-x border-b border-foreground/80">
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/40">
-                          <TableHead>Sl No.</TableHead>
-                          <TableHead>Description of Services</TableHead>
-                          <TableHead>HSN/SAC</TableHead>
-                          <TableHead>Gross Weight (Kg)</TableHead>
-                          <TableHead>Net Weight (Kg)</TableHead>
-                          <TableHead>Quantity</TableHead>
-                          <TableHead>Unit</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {rows.length > 0 ? rows.map((g, i) => (
-                          <TableRow key={g.grn_id}>
-                            <TableCell>{i + 1}</TableCell>
-                            <TableCell className="font-medium">{`Irradiation Services - ${g.product_name ?? g.category_name ?? "Items"}`}</TableCell>
-                            <TableCell>{c.hsn_sac_code ?? "—"}</TableCell>
-                            <TableCell>{g.gross_weight ?? "—"}</TableCell>
-                            <TableCell>{g.net_weight ?? "—"}</TableCell>
-                            <TableCell>{(c.items?.[i]?.quantity ?? (parseFloat(g.received_quantity ?? "0") || 0)).toFixed(2)}</TableCell>
-                            <TableCell>{g.unit ?? c.units ?? "—"}</TableCell>
-                          </TableRow>
-                        )) : (
-                          <TableRow>
-                            <TableCell>1</TableCell>
-                            <TableCell className="font-medium">Irradiation Services</TableCell>
-                            <TableCell>{c.hsn_sac_code ?? "—"}</TableCell>
-                            <TableCell>—</TableCell>
-                            <TableCell>—</TableCell>
-                            <TableCell>{c.quantity ?? "—"}</TableCell>
-                            <TableCell>{c.units ?? "—"}</TableCell>
-                          </TableRow>
-                        )}
-                        <TableRow className="bg-muted/30">
-                          <TableCell />
-                          <TableCell className="text-right font-semibold">Total</TableCell>
-                          <TableCell />
-                          <TableCell>—</TableCell>
-                          <TableCell>—</TableCell>
-                          <TableCell className="font-semibold">{c.quantity ?? "—"}</TableCell>
-                          <TableCell className="font-semibold">{c.units ?? "—"}</TableCell>
-                        </TableRow>
-                      </TableBody>
-                    </Table>
-                  </div>
-
-                  <div className="mx-8 flex items-start justify-between gap-6 border-x border-b border-foreground/80 p-4">
-                    <div className="text-sm">
-                      <p className="font-semibold">Amount in words:</p>
-                      <p>{amountWords}</p>
-                    </div>
-                    <div className="w-full max-w-[360px] space-y-2 text-sm">
-                      <div className="flex justify-between"><span>Base Amount:</span><span className="font-semibold">{formatInr(base)}</span></div>
-                      <div className="flex justify-between"><span>GST:</span><span className="font-semibold">{formatInr(gst)}</span></div>
-                      <div className="flex justify-between border-t border-border pt-2 text-base font-bold"><span>Total Amount:</span><span>{formatInr(total)}</span></div>
-                    </div>
-                  </div>
-
-                  <div className="mx-8 border-x border-b border-foreground/80 p-4 text-sm">
-                    <p className="mb-2 text-base font-bold">Terms & Conditions:</p>
-                    <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-                      <li>Goods once dispatched will not be taken back.</li>
-                      <li>Please collect the products within 48 hours after processing.</li>
-                      <li>This challan is for job work purposes only.</li>
-                      <li>Subject to Lucknow jurisdiction.</li>
-                    </ul>
-                  </div>
-
-                  <div className="mx-8 grid grid-cols-2 border-x border-b border-foreground/80">
-                    <div className="border-r border-foreground/80 p-4 text-sm">
-                      <p className="font-semibold">Receiver's Signature</p>
-                      <p className="mt-8 text-muted-foreground">Name: _________________</p>
-                      <p className="text-muted-foreground">Date: _________________</p>
-                    </div>
-                    <div className="p-4 text-right text-sm">
-                      <p>for QLine Healthcare Pvt Ltd</p>
-                      <p className="mt-12 font-semibold">Authorised Signatory</p>
-                    </div>
-                  </div>
-
-                  <div className="mx-8 mb-8 border-x border-b border-foreground/80 p-3 text-center text-xs">
-                    <p className="font-semibold">SUBJECT TO LUCKNOW JURISDICTION</p>
-                    <p>This is a Computer Generated Document</p>
-                  </div>
-                </div>
-                <div className="flex gap-2 pt-4">
-                  <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
-                </div>
-              </div>
-            )
-          })()}
-          {mode === "edit" && (
-            <form onSubmit={handleEditSave}>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Status</Label>
-                  <Select
-                    value={editForm.status ?? ""}
-                    onValueChange={(v: "Generated" | "Dispatched" | "Delivered") => setEditForm((f) => ({ ...f, status: v }))}
-                  >
-                    <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Generated">Generated</SelectItem>
-                      <SelectItem value="Dispatched">Dispatched</SelectItem>
-                      <SelectItem value="Delivered">Delivered</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Shipping Address</Label>
-                  <Textarea
-                    value={editForm.shipping_address ?? ""}
-                    onChange={(e) => setEditForm((f) => ({ ...f, shipping_address: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-                <Button type="submit">Save</Button>
-              </DialogFooter>
-            </form>
-          )}
-        </DialogContent>
-      </Dialog>
     </PageShell>
   )
 }
