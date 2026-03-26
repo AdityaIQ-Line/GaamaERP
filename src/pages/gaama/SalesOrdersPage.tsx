@@ -427,6 +427,7 @@ export function SalesOrdersPage() {
 
   const validate = (): string | null => {
     if (!customerId) return "Select a customer."
+    if (!selectedCustomer?.phone?.trim()) return "Selected customer must have a phone number."
     if (!orderDate) return "Order date is required."
     if (!categoryId) return "Select a category."
     if (!productId) return "Select a sub category."
@@ -1252,7 +1253,7 @@ export function SalesOrdersPage() {
                     <SalesOrderViewField label="Product Category">
                       {viewCat?.category_name ?? viewOrder.category_name ?? "—"}
                     </SalesOrderViewField>
-                    <SalesOrderViewField label="Sub category">{viewProductName}</SalesOrderViewField>
+                    <SalesOrderViewField label="Subcategory">{viewProductName}</SalesOrderViewField>
                     <SalesOrderViewField label="Expected Delivery Date">
                       {viewOrder.delivery_date?.slice(0, 10) ?? "—"}
                     </SalesOrderViewField>
@@ -1283,7 +1284,7 @@ export function SalesOrdersPage() {
                         {viewWtLabel}
                       </SalesOrderViewField>
                     )}
-                    <SalesOrderViewField label="Created at">
+                    <SalesOrderViewField label="Created At">
                       {viewOrder.created_at?.slice(0, 10) ?? "—"}
                     </SalesOrderViewField>
                     <SalesOrderViewField label="Created by">
@@ -1324,16 +1325,18 @@ export function SalesOrdersPage() {
                       <TableHeader>
                         <TableRow>
                           <TableHead>GRN No</TableHead>
-                          <TableHead>Sub category</TableHead>
+                          <TableHead>GRN Date</TableHead>
+                          <TableHead>Subcategory</TableHead>
                           <TableHead>Quantity</TableHead>
                           <TableHead>Status</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {viewLinkedGrns.map((g) => (
                           <TableRow key={g.grn_id}>
                             <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
+                            <TableCell>{g.received_date?.slice(0, 10) ?? "—"}</TableCell>
                             <TableCell>{g.product_name ?? g.category_name ?? "—"}</TableCell>
                             <TableCell>
                               {g.received_quantity ?? "—"} {g.unit ?? ""}
@@ -1455,7 +1458,7 @@ export function SalesOrdersPage() {
                     <Input readOnly value={roCategoryName} className="h-9 cursor-not-allowed bg-muted/50" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-muted-foreground">Sub category</Label>
+                    <Label className="text-xs font-medium text-muted-foreground">Subcategory</Label>
                     <Input readOnly value={roProductName} className="h-9 cursor-not-allowed bg-muted/50" />
                   </div>
                   <div className="space-y-2">
@@ -1511,7 +1514,10 @@ export function SalesOrdersPage() {
                   </div>
                   <div className="space-y-2">
                     <Label className="text-xs font-medium">
-                      Quantity <span className="text-destructive">*</span>
+                      {orderBasis === "weight"
+                        ? "Quantity (kg)"
+                        : `Number of ${measurementType === "bag" ? "Bags" : "Cartons"}`}{" "}
+                      <span className="text-destructive">*</span>
                     </Label>
                     <Input
                       type="number"
@@ -1560,26 +1566,6 @@ export function SalesOrdersPage() {
                   </div>
                 </div>
 
-                {orderBasis === "weight" && (
-                  <div className="mt-4 space-y-2">
-                    <Label className="text-xs font-medium">Weight type for invoicing</Label>
-                    <Select
-                      value={weightTypeForInvoicing}
-                      onValueChange={(v: "net" | "gross") => setWeightTypeForInvoicing(v)}
-                    >
-                      <SelectTrigger className={`${editSelectTriggerClass} max-w-md`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {WEIGHT_TYPE_OPTIONS.map((opt) => (
-                          <SelectItem key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border pt-6">

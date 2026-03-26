@@ -12,6 +12,12 @@ import {
 } from "@/components/ui/table"
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@/components/ui/input-group"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
@@ -23,7 +29,7 @@ import {
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
 import type { Category, SubCategory } from "@/lib/gaama-types"
-import { Plus, FolderTree, Trash2, Search, Pencil } from "lucide-react"
+import { Plus, FolderTree, Trash2, Search, Pencil, Eye } from "lucide-react"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import {
   Select,
@@ -35,16 +41,6 @@ import {
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { latestOfDates, sortLatestFirst } from "@/lib/utils"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 
 /** Dose unit is fixed for all categories (not user-selectable). */
 const FIXED_DOSE_UNIT = "kGy"
@@ -55,6 +51,8 @@ interface SubCategoryForm {
   name: string
 }
 
+type FormMode = "create" | "edit" | "view" | null
+
 function generateId(): string {
   return `sub_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 }
@@ -63,8 +61,8 @@ export function CategoriesPage() {
   const data = useData()
   const [selectedId, setSelectedId] = React.useState<string | null>(null)
 
-  // Full-page Add/Edit form state
-  const [showForm, setShowForm] = React.useState(false)
+  // Full-page Create / Edit / View state
+  const [formMode, setFormMode] = React.useState<FormMode>(null)
   const [formCategoryName, setFormCategoryName] = React.useState("")
   const [formDoseCount, setFormDoseCount] = React.useState<string>("")
   const [formStatus, setFormStatus] = React.useState("Active")
@@ -72,7 +70,6 @@ export function CategoriesPage() {
   const [subcategories, setSubcategories] = React.useState<SubCategoryForm[]>([])
   const [newSubName, setNewSubName] = React.useState("")
   const [searchTerm, setSearchTerm] = React.useState("")
-  const [categoryToDelete, setCategoryToDelete] = React.useState<Category | null>(null)
 
   const allowed = canAccess(data.currentRole, "categories")
   const categories = data.categories
@@ -85,7 +82,7 @@ export function CategoriesPage() {
     setSubcategories([])
     setNewSubName("")
     setSelectedId(null)
-    setShowForm(true)
+    setFormMode("create")
   }
 
   const openEdit = (c: Category) => {
@@ -98,7 +95,18 @@ export function CategoriesPage() {
     )
     setNewSubName("")
     setSelectedId(c.category_id)
-    setShowForm(true)
+    setFormMode("edit")
+  }
+
+  const openView = (c: Category) => {
+    setFormCategoryName(c.category_name)
+    setFormDoseCount(String(c.dose_count ?? ""))
+    setFormStatus(c.status ?? "Active")
+    setFormDescription(c.description ?? "")
+    setSubcategories((c.subcategories ?? []).map((s) => ({ id: s.id, name: s.name })))
+    setNewSubName("")
+    setSelectedId(c.category_id)
+    setFormMode("view")
   }
 
   const handleAddSubcategory = () => {
@@ -114,13 +122,14 @@ export function CategoriesPage() {
 
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault()
+    if (formMode === "view") return
     if (!formCategoryName.trim()) {
       toast.error("Category Name is required.")
       return
     }
     const doseNum = Number(formDoseCount)
     if (!formDoseCount || isNaN(doseNum) || doseNum < 0) {
-      toast.error("Dose Count is required and must be a valid number.")
+      toast.error("Dose (kGy) is required and must be a valid number.")
       return
     }
     const now = new Date().toISOString()
@@ -151,14 +160,19 @@ export function CategoriesPage() {
         updated_at: now,
       })
     }
-    setShowForm(false)
+    setFormMode(null)
     setSelectedId(null)
     toast.success(selectedId ? "Category updated." : "Category created.")
   }
 
-  const handleCancelForm = () => {
+  const handleCloseForm = () => {
+    if (formMode === "view") {
+      setFormMode(null)
+      setSelectedId(null)
+      return
+    }
     if (!window.confirm("Discard changes?")) return
-    setShowForm(false)
+    setFormMode(null)
     setSelectedId(null)
   }
 
@@ -176,54 +190,81 @@ export function CategoriesPage() {
     )
   }, [categories, searchTerm])
 
-  // Full-page Add/Edit Category form
-  if (showForm && allowed) {
+  // Full-page Create/Edit/View Category page
+  if (formMode && allowed) {
+    const isView = formMode === "view"
+    const inputReadOnlyClass = "cursor-not-allowed bg-muted/50"
+    const title =
+      formMode === "edit"
+        ? "Edit Product Category"
+        : formMode === "view"
+          ? "View Product Category"
+          : "Add Product Category"
+
     return (
       <PageShell>
         <div className="flex-1 overflow-auto">
           <div className="w-full h-full">
             <PageHeaderWithBack
-              title={selectedId ? "Edit Product Category" : "Add Product Category"}
+              title={title}
               noBorder
-              backButton={{ onClick: handleCancelForm }}
+              backButton={{ onClick: handleCloseForm }}
+              actions={
+                isView ? (
+                  <Button
+                    type="button"
+                    className="h-9 rounded-md shadow-none"
+                    onClick={() => {
+                      const c = selectedId ? data.getCategory(selectedId) : undefined
+                      if (!c) return
+                      openEdit(c)
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    Edit
+                  </Button>
+                ) : undefined
+              }
             />
             <div className="space-y-4 px-6 py-4 h-full">
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 shadow-sm">
             <form onSubmit={handleSaveForm}>
               <FormSection title="Category Details" compact noSeparator>
                 <div className="space-y-4 py-4">
-                  <div className="grid h-fit grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid h-fit grid-cols-2 md:grid-cols-3 gap-4">
                     <div className="space-y-2">
                       <Label>Category Name *</Label>
                       <Input
                         value={formCategoryName}
                         onChange={(e) => setFormCategoryName(e.target.value)}
                         placeholder="Enter category name"
+                        readOnly={isView}
+                        className={isView ? inputReadOnlyClass : undefined}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Dose Count *</Label>
-                      <Input
-                        type="number"
-                        min={0}
-                        value={formDoseCount}
-                        onChange={(e) => setFormDoseCount(e.target.value)}
-                        placeholder="e.g. 25"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Dose Unit</Label>
-                      <Input
-                        readOnly
-                        value={FIXED_DOSE_UNIT}
-                        className="cursor-not-allowed bg-muted/50"
-                        aria-readonly="true"
-                      />
+                      <Label htmlFor="category-dose-kgy">Dose (kGy) *</Label>
+                      <InputGroup>
+                        <InputGroupInput
+                          id="category-dose-kgy"
+                          type="number"
+                          min={0}
+                          step="any"
+                          value={formDoseCount}
+                          onChange={(e) => setFormDoseCount(e.target.value)}
+                          placeholder="e.g. 25"
+                          readOnly={isView}
+                          className={isView ? inputReadOnlyClass : undefined}
+                        />
+                        <InputGroupAddon align="inline-end">
+                          <InputGroupText>{FIXED_DOSE_UNIT}</InputGroupText>
+                        </InputGroupAddon>
+                      </InputGroup>
                     </div>
                     <div className="space-y-2">
                       <Label>Status</Label>
                       <Select value={formStatus} onValueChange={setFormStatus}>
-                        <SelectTrigger>
+                        <SelectTrigger disabled={isView}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -243,6 +284,7 @@ export function CategoriesPage() {
                       onChange={(e) => setFormDescription(e.target.value)}
                       placeholder="Optional description"
                       className="min-h-[80px]"
+                      readOnly={isView}
                     />
                   </div>
                 </div>
@@ -250,27 +292,29 @@ export function CategoriesPage() {
 
               <FormSection title="Sub categories" compact noSeparator>
                 <div className="space-y-4 py-4">
-                  <div className="flex gap-2">
-                    <Input
-                      value={newSubName}
-                      onChange={(e) => setNewSubName(e.target.value)}
-                      placeholder="Sub category name"
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault()
-                          handleAddSubcategory()
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleAddSubcategory}
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add
-                    </Button>
-                  </div>
+                  {!isView ? (
+                    <div className="flex gap-2">
+                      <Input
+                        value={newSubName}
+                        onChange={(e) => setNewSubName(e.target.value)}
+                        placeholder="Sub category name"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault()
+                            handleAddSubcategory()
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleAddSubcategory}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+                  ) : null}
                   {subcategories.length > 0 && (
                     <ul className="space-y-2">
                       {subcategories.map((s) => (
@@ -279,15 +323,17 @@ export function CategoriesPage() {
                           className="flex items-center justify-between rounded-md border px-3 py-2"
                         >
                           <span>{s.name}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleRemoveSubcategory(s.id)}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {!isView ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleRemoveSubcategory(s.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -295,14 +341,16 @@ export function CategoriesPage() {
                 </div>
               </FormSection>
 
-              <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t">
-                <Button type="button" variant="outline" onClick={handleCancelForm}>
-                  Cancel
-                </Button>
-                <Button type="submit">
-                  {selectedId ? "Save" : "Create Category"}
-                </Button>
-              </div>
+              {!isView ? (
+                <div className="flex items-center justify-end gap-3 mt-8 pt-6 border-t">
+                  <Button type="button" variant="outline" onClick={handleCloseForm}>
+                    Cancel
+                  </Button>
+                  <Button type="submit">
+                    {selectedId ? "Save" : "Create Category"}
+                  </Button>
+                </div>
+              ) : null}
             </form>
           </div>
             </div>
@@ -360,11 +408,11 @@ export function CategoriesPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Sub categories</TableHead>
+                      <TableHead>Category Name</TableHead>
+                      <TableHead>Subcategory</TableHead>
                       <TableHead>Dose</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead>Created at</TableHead>
+                      <TableHead>Created At</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -372,14 +420,7 @@ export function CategoriesPage() {
                     {filteredCategories.map((c) => (
                       <TableRow key={c.category_id}>
                         <TableCell className="max-w-md whitespace-normal align-top">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium">{c.category_name}</span>
-                            {c.description ? (
-                              <span className="text-sm font-normal text-muted-foreground leading-snug">
-                                {c.description}
-                              </span>
-                            ) : null}
-                          </div>
+                          <span className="font-medium">{c.category_name}</span>
                         </TableCell>
                         <TableCell className="max-w-[260px] whitespace-normal align-top">
                           {(c.subcategories ?? []).some((s) => s.name) ? (
@@ -419,17 +460,11 @@ export function CategoriesPage() {
                             : "—"}
                         </TableCell>
                         <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}>
+                            <Eye className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(c)}>
                             <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            title="Delete"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => setCategoryToDelete(c)}
-                          >
-                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -441,37 +476,6 @@ export function CategoriesPage() {
           </>
         )}
       </div>
-
-      <AlertDialog
-        open={!!categoryToDelete}
-        onOpenChange={(open) => !open && setCategoryToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Category</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>{categoryToDelete?.category_name ?? "this category"}</strong>? This action
-              cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setCategoryToDelete(null)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => {
-                if (categoryToDelete) {
-                  data.deleteCategory(categoryToDelete.category_id)
-                  toast.success("Category deleted.")
-                  setCategoryToDelete(null)
-                }
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </PageShell>
   )
 }

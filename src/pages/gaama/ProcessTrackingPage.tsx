@@ -36,6 +36,7 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
+import { useNavigate } from "react-router-dom"
 import type { GRN, GRNStatus } from "@/lib/gaama-types"
 import { GitBranch, Search, Download } from "lucide-react"
 import { toast } from "sonner"
@@ -74,6 +75,7 @@ function exportToCsv(rows: Array<Record<string, string | number>>, filename: str
 
 export function ProcessTrackingPage() {
   const data = useData()
+  const navigate = useNavigate()
   const [searchTerm, setSearchTerm] = React.useState("")
   const [filterCustomer, setFilterCustomer] = React.useState("all")
   const [filterCategory, setFilterCategory] = React.useState("all")
@@ -153,6 +155,7 @@ export function ProcessTrackingPage() {
       status: updateStatus,
       remarks: updateRemarks.trim() || undefined,
     })
+    let redirectedToGatePass = false
     if (updateStatus === "Rejected") {
       const now = new Date().toISOString()
       data.addGatePass({
@@ -169,9 +172,15 @@ export function ProcessTrackingPage() {
         processing_type: "Defect",
         timestamp: now,
       })
+      redirectedToGatePass = true
     }
     setUpdateModalGrnId(null)
     setUpdateRemarks("")
+    if (redirectedToGatePass) {
+      toast.success("Status updated. Defect Gate Pass created.")
+      navigate("/gate-pass")
+      return
+    }
     toast.success("Status updated.")
   }
 
@@ -181,7 +190,7 @@ export function ProcessTrackingPage() {
     const rows = filteredRows.map((g) => ({
       "GRN No": g.grn_number ?? g.grn_id,
       "Sales Order No": g.sales_order_number ?? "",
-      "sub Category": g.product_name ?? "",
+      Subcategory: g.product_name ?? "",
       Customer: g.customer_name ?? "",
       Quantity: g.received_quantity ?? "",
       Units: g.unit ?? "",
@@ -277,12 +286,12 @@ export function ProcessTrackingPage() {
                   <TableRow>
                     <TableHead>GRN No</TableHead>
                     <TableHead>Sales Order No</TableHead>
-                    <TableHead>sub Category</TableHead>
+                    <TableHead>Subcategory</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Units</TableHead>
                     <TableHead className="min-w-[140px]">Status</TableHead>
-                    <TableHead className="text-right w-[120px]">Action</TableHead>
+                    <TableHead className="text-right w-[120px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>

@@ -40,7 +40,7 @@ import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 type Tab = "pending" | "delivery"
 type ModalMode = "create" | "edit" | "view" | null
 
-const DISPATCH_THROUGH_OPTIONS = ["Vehicle", "Courier", "Road transport", "Rail", "Air"] as const
+const DISPATCH_THROUGH_OPTIONS = ["Vehicle", "By Person", "By Post"] as const
 
 function parseGrnQty(s: string | undefined): number {
   return parseFloat(String(s ?? "").replace(/,/g, "")) || 0
@@ -153,10 +153,12 @@ export function ChallanPage() {
   )
   const [createTermsOfDelivery, setCreateTermsOfDelivery] = React.useState("")
   const [createDispatchedThrough, setCreateDispatchedThrough] = React.useState("Vehicle")
+  const [createIncludeGstInTotal, setCreateIncludeGstInTotal] = React.useState(true)
   const [createOtherReferences, setCreateOtherReferences] = React.useState("")
   const [createHsnSacCode, setCreateHsnSacCode] = React.useState("")
 
   const [editForm, setEditForm] = React.useState<Partial<Challan>>({})
+  const [editInitialSnapshot, setEditInitialSnapshot] = React.useState("")
 
   const allowed = canAccess(data.currentRole, "challan")
   const grns = data.grns
@@ -198,6 +200,7 @@ export function ChallanPage() {
     setCreateDeliveryNoteDate(new Date().toISOString().slice(0, 10))
     setCreateTermsOfDelivery("")
     setCreateDispatchedThrough("Vehicle")
+    setCreateIncludeGstInTotal(true)
     setCreateOtherReferences("")
     setCreateHsnSacCode("")
     setCreateVehicleDetails("")
@@ -249,6 +252,34 @@ export function ChallanPage() {
     : customerForAddress?.billing_address
       ? [customerForAddress.billing_address]
       : []
+
+  const handleAddShippingAddress = () => {
+    if (!customerForAddress) {
+      toast.error("Select a customer-linked GRN first to add shipping address.")
+      return
+    }
+    const entered = window.prompt("Enter new shipping address")
+    const addr = entered?.trim()
+    if (!addr) return
+    const existing = customerForAddress.shipping_addresses_typed ?? []
+    if (existing.some((a) => a.address.trim().toLowerCase() === addr.toLowerCase())) {
+      setCreateShippingAddress(addr)
+      toast.message("Address already exists for this customer.")
+      return
+    }
+    data.updateCustomer(customerForAddress.customer_id, {
+      shipping_addresses_typed: [
+        ...existing,
+        {
+          id: `ship_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          address: addr,
+          is_default: existing.length === 0,
+        },
+      ],
+    })
+    setCreateShippingAddress(addr)
+    toast.success("Shipping address added.")
+  }
 
   const handleGenerateChallan = (e: React.FormEvent) => {
     e.preventDefault()
@@ -307,7 +338,7 @@ export function ChallanPage() {
     const gstPctStr = grnList.find((g) => g.gst_percentage && String(g.gst_percentage).trim() !== "")?.gst_percentage ?? "0"
     const gstPct = parseFloat(gstPctStr) || 0
     const gstAmt = (computedBase * gstPct) / 100
-    const total = computedBase + gstAmt
+    const total = computedBase + (createIncludeGstInTotal ? gstAmt : 0)
     data.addChallan({
       sales_order_id: soId,
       sales_order_number: so?.sales_order_number ?? so?.order_number,
@@ -333,6 +364,7 @@ export function ChallanPage() {
       gst_percentage: gstPctStr !== "0" ? gstPctStr : undefined,
       gst_amount: String(gstAmt.toFixed(2)),
       total_amount: String(total.toFixed(2)),
+      include_gst: createIncludeGstInTotal,
     })
     toast.success("Challan generated.")
     setMode(null)
@@ -374,8 +406,18 @@ export function ChallanPage() {
 
   const openEdit = (c: Challan) => {
     setSelectedChallanId(c.challan_id)
-    setEditForm({ ...c })
+    const next = { ...c }
+    setEditForm(next)
+    setEditInitialSnapshot(JSON.stringify(next))
     setMode("edit")
+  }
+
+  const hasEditChanges =
+    mode === "edit" && JSON.stringify(editForm) !== editInitialSnapshot
+
+  const closeEditChallan = () => {
+    if (hasEditChanges && !window.confirm("Discard changes?")) return
+    closeChallanDetail()
   }
 
   const handleEditSave = (e: React.FormEvent) => {
@@ -383,6 +425,7 @@ export function ChallanPage() {
     if (!selectedChallanId) return
     data.updateChallan(selectedChallanId, editForm)
     toast.success("Challan updated.")
+    setEditInitialSnapshot("")
     setMode(null)
     setSelectedChallanId(null)
   }
@@ -896,6 +939,19 @@ export function ChallanPage() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Include GST in Total Amount</Label>
+              <div className="flex h-9 items-center gap-3 rounded-md border border-border px-3">
+                <Switch
+                  checked={createIncludeGstInTotal}
+                  onCheckedChange={(v) => setCreateIncludeGstInTotal(Boolean(v))}
+                  aria-label="Include GST in total amount"
+                />
+                <span className="text-sm text-muted-foreground">
+                  {createIncludeGstInTotal ? "GST included in challan total" : "GST excluded from challan total"}
+                </span>
+              </div>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Other References</Label>
               <Textarea
@@ -920,6 +976,11 @@ export function ChallanPage() {
               <Label>
                 <span className="text-destructive">*</span> Shipping Address
               </Label>
+              <div className="flex items-center justify-end pb-1">
+                <Button type="button" variant="outline" size="sm" onClick={handleAddShippingAddress}>
+                  Add New
+                </Button>
+              </div>
               {shippingOptions.length > 0 ? (
                 <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
                   <SelectTrigger className="h-9 rounded-md shadow-none">
@@ -1075,11 +1136,7 @@ export function ChallanPage() {
     return (
       <PageShell>
         <div className="flex flex-1 flex-col overflow-auto">
-          <PageHeaderWithBack
-            title="Edit Challan"
-            noBorder
-            backButton={{ onClick: closeChallanDetail }}
-          />
+            <PageHeaderWithBack title="Edit Challan" noBorder backButton={{ onClick: closeEditChallan }} />
           <form onSubmit={handleEditSave} className="flex flex-1 flex-col">
             <div className="flex-1 space-y-6 px-6 py-4">
               <div className="rounded-md border border-border bg-muted/30 p-4 md:p-5">
@@ -1241,7 +1298,7 @@ export function ChallanPage() {
               </div>
             </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-border bg-background px-6 py-4">
-              <Button type="button" variant="outline" className="h-9 rounded-md shadow-none" onClick={closeChallanDetail}>
+              <Button type="button" variant="outline" className="h-9 rounded-md shadow-none" onClick={closeEditChallan}>
                 Cancel
               </Button>
               <Button type="submit" className="h-9 rounded-md shadow-none">

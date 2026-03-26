@@ -20,7 +20,7 @@ This document + **code** are the source of truth for spacing, colors, and behavi
 | In scope | Out of scope (unless product says otherwise) |
 |----------|-----------------------------------------------|
 | Full-page **create** flows (`PageHeaderWithBack` or equivalent + body — **§3.2**) | List/index pages, dashboards |
-| **Edit** full pages that reuse the same form layout | **View-only** screens (can stay compact / dialog) |
+| Full-page **view / detail** and **edit** flows (**§3.10.2**) | Ad-hoc dialogs for primary record UX |
 | Layout, cards, section titles, reference/read-only blocks | Changing business rules or DataContext APIs |
 | **English-only** copy on create pages (**§6.10**) | i18n / multiple languages |
 
@@ -138,8 +138,14 @@ Layout: `flex justify-end gap-2` (or `justify-between` if a left-aligned seconda
 
 ### 3.10 Modals vs full page
 
-- **Create:** **full page** (this protocol).
-- **Edit / View:** may stay **dialog**; full-page edit should reuse the **same card layout** as create.
+- **Create / Generate:** **full page** (this protocol — **§3.3** DOM).
+- **View / Detail:** **full page by default** — same **`PageShell`** + **`flex-1 overflow-auto`** + **`w-full h-full`** + **`PageHeaderWithBack`** + **`space-y-4 px-6 py-4 h-full`** as create (**§3.3**). Use **cards** for read-only grids; **`Input readOnly`** with muted styling (**§3.6**). Title pattern: **noun + context** (e.g. “Invoice details”, “View certificate”, “Gate pass”) or **identifier suffix** (e.g. “Invoice · INV-2025-001”).
+- **Edit:** **full page by default** — reuse the **same card layout and field styling** as the corresponding create flow; footer with **Cancel** + **Save** (**§3.9**). Confirm on back when the form is dirty (**§6.7**).
+- **When dialogs are OK (explicit exceptions):** **Destructive / irreversible confirms** (`AlertDialog`), **narrow auxiliary tasks** (e.g. print sticker, send-for-processing confirm), or **product-signed-off** compact editors. Do **not** use a **modal as the primary** view or edit surface for a module record unless stakeholders document that exception in the module spec.
+
+### 3.10.1 Print from list → detail page
+
+If the list has **Print**, navigate to the **full-page view** first, then trigger **`window.print()`** after layout paint (short timeout or `useEffect`), and hide chrome that should not print (**`print:hidden`** on header/toolbars) so only the document/card prints.
 
 ### 3.11 Theme
 
@@ -175,7 +181,9 @@ Use **`@/components/ui/button`**:
 | Invoice | Create | Align |
 | Challan | Generate | Align |
 | Certificate | Generate | Align |
-| Gate Pass | Generate | Align |
+| Gate Pass | Generate; **View** full page | Align |
+| Invoice | Create; **View / Edit** full page | Align |
+| Certificate | Generate; **View** full page | Align |
 
 ---
 
@@ -303,3 +311,4 @@ Do **not** treat mock **colors, exact px, or button styles** as authoritative �
 | *(update)* | §3.2–§3.3: IQLDS **`PageHeaderWithBack` / `BackButton` + `h1` title**; header + cards share **`px-6`** full-width column |
 | *(update)* | §3.3 / §6.4: removed fixed **`max-w-[950px]`** — create flows use full content width like list pages |
 | *(update)* | §3.1: page scroll column matches **IQLDS list views** — **no** full-column **`bg-muted`**; contrast from **cards** only |
+| *(update)* | §3.10: **View / Edit** default to **full page** (same §3.3 shell); dialogs only for explicit exceptions; §3.10.1 print-from-list; §5 rollout rows for Invoice / Certificate / Gate Pass view |

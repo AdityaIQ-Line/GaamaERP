@@ -25,6 +25,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Empty,
   EmptyHeader,
   EmptyMedia,
@@ -42,6 +49,7 @@ import { PrintStickerDialog } from "@/components/patterns/print-sticker-dialog"
 import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
+const PROCESSING_PRIORITY_OPTIONS = ["High", "Medium", "Low"] as const
 
 /** SO / GRN snapshot row: plain text or sub categories as badges (multi-value). */
 type GrnSoSummaryRow =
@@ -185,7 +193,7 @@ export function GRNPage() {
           : `Ref-${selectedOrder.sales_order_number ?? selectedOrder.sales_order_id ?? "SO"}`
       )
       setReceivedBy((prev) => (prev.trim() ? prev : "Warehouse"))
-      setProcessingPriority((prev) => (prev.trim() ? prev : "Standard"))
+      setProcessingPriority((prev) => (prev.trim() ? prev : "Medium"))
       setRemarks((prev) => (prev.trim() ? prev : (selectedOrder.notes ?? "")))
       setReceivedDate(new Date().toISOString().slice(0, 10))
     }
@@ -306,6 +314,10 @@ export function GRNPage() {
     }
     if (!netWeight.trim() || !grossWeight.trim()) {
       alert("Net weight and gross weight are required.")
+      return
+    }
+    if (!PROCESSING_PRIORITY_OPTIONS.includes(processingPriority as (typeof PROCESSING_PRIORITY_OPTIONS)[number])) {
+      alert("Select a valid processing priority (High, Medium, or Low).")
       return
     }
     const net = parseFloat(netWeight)
@@ -771,6 +783,27 @@ export function GRNPage() {
                   className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
                 />
                 <p className="text-xs text-muted-foreground">Must be &gt;= Net Weight</p>
+              </div>
+              <div className="space-y-1 min-w-0">
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Processing Priority
+                </Label>
+                {mode === "create" ? (
+                  <Select value={processingPriority} onValueChange={setProcessingPriority}>
+                    <SelectTrigger className={inputPencil}>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROCESSING_PRIORITY_OPTIONS.map((priority) => (
+                        <SelectItem key={priority} value={priority}>
+                          {priority}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input readOnly value={processingPriorityDisplay} className={readOnlyFieldClass} />
+                )}
               </div>
             </div>
           </div>
