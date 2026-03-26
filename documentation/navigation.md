@@ -83,6 +83,8 @@ For full-screen **add / create / generate** flows inside `PageShell`, follow **[
 
 **Page background:** The scrollable column should stay on the **same default surface as list views** — **do not** add **`bg-muted`** / **`bg-muted/40`** to the full-page content area (**CREATE_PAGES_DESIGN_INTENT** §3.1).
 
+**View / edit (record detail):** Use the **same shell and padding** as create (**§3.3**): **`PageHeaderWithBack`** + **`space-y-4 px-6 py-4 h-full`** with **cards** for read-only or editable sections. Prefer **full pages**, not **`Dialog`**, unless the module spec explicitly calls for a modal (see **CREATE_PAGES_DESIGN_INTENT** §3.10–§3.10.1).
+
 ```tsx
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageShell } from "@/components/layouts/page-shell"

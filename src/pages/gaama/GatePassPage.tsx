@@ -10,12 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -51,6 +45,11 @@ export function GatePassPage() {
   const [generateDate, setGenerateDate] = React.useState(() =>
     new Date().toISOString().slice(0, 10)
   )
+  const [generateProcessingType, setGenerateProcessingType] = React.useState("")
+  const [generateVehicleNo, setGenerateVehicleNo] = React.useState("")
+  const [generateDriverName, setGenerateDriverName] = React.useState("")
+  const [generateMobileNo, setGenerateMobileNo] = React.useState("")
+  const [generateSealNo, setGenerateSealNo] = React.useState("")
 
   const [searchTerm, setSearchTerm] = React.useState("")
   const [filterCustomer, setFilterCustomer] = React.useState("all")
@@ -94,32 +93,94 @@ export function GatePassPage() {
     return Array.from(cats) as string[]
   }, [gatePasses])
 
+  const [printAfterViewOpen, setPrintAfterViewOpen] = React.useState(false)
+
+  const closeGatePassView = React.useCallback(() => {
+    setMode(null)
+    setViewId(null)
+    setPrintAfterViewOpen(false)
+  }, [])
+
+  React.useEffect(() => {
+    if (mode !== "view" || !printAfterViewOpen || !viewId) return
+    if (!data.getGatePass(viewId)) return
+    const t = window.setTimeout(() => {
+      window.print()
+      setPrintAfterViewOpen(false)
+    }, 450)
+    return () => window.clearTimeout(t)
+  }, [mode, printAfterViewOpen, viewId])
+
   const openView = (g: GatePass) => {
+    setPrintAfterViewOpen(false)
     setViewId(g.gatepass_id)
     setMode("view")
+  }
+
+  const openViewThenPrint = (g: GatePass) => {
+    setViewId(g.gatepass_id)
+    setMode("view")
+    setPrintAfterViewOpen(true)
   }
 
   const openGenerate = (g: GatePass) => {
     setGenerateId(g.gatepass_id)
     setGenerateNumber(g.gate_pass_number ?? "")
     setGenerateDate(g.gate_pass_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10))
+    setGenerateProcessingType(g.processing_type ?? "")
+    setGenerateVehicleNo(g.vehicle_number ?? g.vehicle_no ?? "")
+    setGenerateDriverName(g.driver_name ?? "")
+    setGenerateMobileNo(g.mobile_no ?? "")
+    setGenerateSealNo(g.vehicle_seal_number ?? "")
     setMode("generate")
   }
 
   const handleGenerateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!generateId) return
+    if (!generateNumber.trim()) {
+      toast.error("Gate pass number is required.")
+      return
+    }
+    if (!generateDate.trim()) {
+      toast.error("Gate pass date is required.")
+      return
+    }
+    if (!generateProcessingType.trim()) {
+      toast.error("Processing type is required.")
+      return
+    }
+    if (!generateVehicleNo.trim()) {
+      toast.error("Vehicle number is required.")
+      return
+    }
+    if (!generateDriverName.trim()) {
+      toast.error("Driver name is required.")
+      return
+    }
+    if (!generateMobileNo.trim()) {
+      toast.error("Mobile number is required.")
+      return
+    }
+    if (!generateSealNo.trim()) {
+      toast.error("Vehicle seal number is required.")
+      return
+    }
     data.updateGatePass(generateId, {
-      gate_pass_number: generateNumber,
+      gate_pass_number: generateNumber.trim(),
       gate_pass_date: new Date(generateDate).toISOString().slice(0, 10),
+      processing_type: generateProcessingType.trim(),
+      vehicle_number: generateVehicleNo.trim(),
+      vehicle_no: generateVehicleNo.trim(),
+      driver_name: generateDriverName.trim(),
+      mobile_no: generateMobileNo.trim(),
+      vehicle_seal_number: generateSealNo.trim(),
       gate_pass_status: "Generated",
     })
     toast.success("Gate pass generated.")
     setMode(null)
     setGenerateId(null)
   }
-
-  const viewGatePass = viewId ? data.getGatePass(viewId) : null
 
   const cancelGenerateGatePass = () => {
     if (!window.confirm("Discard changes?")) return
@@ -132,12 +193,52 @@ export function GatePassPage() {
       <form onSubmit={handleGenerateSubmit}>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label>Gate Pass Number</Label>
+            <Label>Gate Pass Number *</Label>
             <Input value={generateNumber} onChange={(e) => setGenerateNumber(e.target.value)} placeholder="e.g. GP-2025-001" />
           </div>
           <div className="space-y-2">
-            <Label>Gate Pass Date</Label>
+            <Label>Gate Pass Date *</Label>
             <Input type="date" value={generateDate} onChange={(e) => setGenerateDate(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Processing Type *</Label>
+            <Input
+              value={generateProcessingType}
+              onChange={(e) => setGenerateProcessingType(e.target.value)}
+              placeholder="e.g. Normal / Defect"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Vehicle Number *</Label>
+            <Input
+              value={generateVehicleNo}
+              onChange={(e) => setGenerateVehicleNo(e.target.value)}
+              placeholder="Enter vehicle number"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Driver Name *</Label>
+            <Input
+              value={generateDriverName}
+              onChange={(e) => setGenerateDriverName(e.target.value)}
+              placeholder="Enter driver name"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Mobile Number *</Label>
+            <Input
+              value={generateMobileNo}
+              onChange={(e) => setGenerateMobileNo(e.target.value)}
+              placeholder="Enter driver mobile number"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Vehicle Seal Number *</Label>
+            <Input
+              value={generateSealNo}
+              onChange={(e) => setGenerateSealNo(e.target.value)}
+              placeholder="Enter vehicle seal number"
+            />
           </div>
         </div>
         <div className="flex justify-end gap-2 border-t pt-4">
@@ -158,6 +259,123 @@ export function GatePassPage() {
             <PageHeaderWithBack title="Generate Gate Pass" noBorder backButton={{ onClick: cancelGenerateGatePass }} />
             <div className="space-y-4 px-6 py-4 h-full">
             {gatePassGenerateForm}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (allowed && mode === "view" && viewId) {
+    const g = data.getGatePass(viewId)
+    if (!g) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <div className="w-full h-full">
+              <PageHeaderWithBack title="Gate pass" noBorder backButton={{ onClick: closeGatePassView }} />
+              <div className="px-6 py-4 text-muted-foreground">Gate pass not found.</div>
+            </div>
+          </div>
+        </PageShell>
+      )
+    }
+    const title = `Gate pass · ${g.challan_number ?? g.challan_id ?? g.gatepass_id}`
+    const readOnlyClass = "h-9 cursor-not-allowed rounded-md border-transparent bg-muted text-muted-foreground"
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <div className="print:hidden">
+              <PageHeaderWithBack
+                title={title}
+                noBorder
+                backButton={{ onClick: closeGatePassView }}
+                actions={
+                  <Button type="button" variant="outline" className="h-9 rounded-md shadow-none" onClick={() => window.print()}>
+                    <Printer className="mr-2 h-4 w-4" />
+                    Print
+                  </Button>
+                }
+              />
+            </div>
+            <div className="space-y-4 px-6 py-4 h-full print:py-2">
+              <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-foreground">Challan &amp; product</h2>
+                  <Badge variant="secondary" className="font-normal">
+                    {g.gate_pass_status ?? "Pending"}
+                  </Badge>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Challan No.</Label>
+                    <Input readOnly value={g.challan_number ?? g.challan_id ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Customer</Label>
+                    <Input readOnly value={g.customer_name ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Product category</Label>
+                    <Input readOnly value={g.product_category ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Subcategory</Label>
+                    <Input readOnly value={g.product_name ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Quantity</Label>
+                    <Input readOnly value={`${g.quantity ?? "—"} ${g.units ?? ""}`.trim()} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Challan date &amp; time</Label>
+                    <Input
+                      readOnly
+                      value={g.challan_date_time ?? g.timestamp?.slice(0, 19).replace("T", " ") ?? "—"}
+                      className={readOnlyClass}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                <h2 className="mb-4 text-lg font-semibold text-foreground">Gate pass &amp; logistics</h2>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Gate pass number</Label>
+                    <Input readOnly value={g.gate_pass_number ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Gate pass date</Label>
+                    <Input readOnly value={g.gate_pass_date?.slice(0, 10) ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Process status</Label>
+                    <Input readOnly value={g.process_status ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Processing type</Label>
+                    <Input readOnly value={g.processing_type ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Vehicle no.</Label>
+                    <Input readOnly value={g.vehicle_number ?? g.vehicle_no ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Driver name</Label>
+                    <Input readOnly value={g.driver_name ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Mobile no.</Label>
+                    <Input readOnly value={g.mobile_no ?? "—"} className={readOnlyClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Vehicle seal no.</Label>
+                    <Input readOnly value={g.vehicle_seal_number ?? "—"} className={readOnlyClass} />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -238,7 +456,7 @@ export function GatePassPage() {
                     <TableHead>Challan No.</TableHead>
                     <TableHead>Customer</TableHead>
                     <TableHead>Product Category</TableHead>
-                    <TableHead>Sub category</TableHead>
+                    <TableHead>Subcategory</TableHead>
                     <TableHead>Quantity</TableHead>
                     <TableHead>Challan Date & Time</TableHead>
                     <TableHead>Process Status</TableHead>
@@ -262,7 +480,7 @@ export function GatePassPage() {
                         {g.gate_pass_status !== "Generated" && (
                           <Button variant="ghost" size="sm" title="Generate" onClick={() => openGenerate(g)}><FileOutput className="h-4 w-4" /></Button>
                         )}
-                        <Button variant="ghost" size="sm" title="Print" onClick={() => { setViewId(g.gatepass_id); setMode("view"); setTimeout(() => window.print(), 300); }}><Printer className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="sm" title="Print" onClick={() => openViewThenPrint(g)}><Printer className="h-4 w-4" /></Button>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -272,28 +490,6 @@ export function GatePassPage() {
           </>
         )}
       </div>
-
-      <Dialog open={mode === "view" && viewId !== null} onOpenChange={(open) => !open && (setMode(null), setViewId(null))}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Gate Pass Details</DialogTitle>
-          </DialogHeader>
-          {viewGatePass && (
-            <div className="space-y-4 py-4">
-              <p><strong>Challan No.:</strong> {viewGatePass.challan_number ?? viewGatePass.challan_id}</p>
-              <p><strong>Customer:</strong> {viewGatePass.customer_name ?? "—"}</p>
-              <p><strong>Product Category:</strong> {viewGatePass.product_category ?? "—"}</p>
-              <p><strong>Sub category:</strong> {viewGatePass.product_name ?? "—"}</p>
-              <p><strong>Quantity:</strong> {viewGatePass.quantity ?? "—"} {viewGatePass.units ?? ""}</p>
-              <p><strong>Gate Pass Number:</strong> {viewGatePass.gate_pass_number ?? "—"}</p>
-              <p><strong>Gate Pass Date:</strong> {viewGatePass.gate_pass_date?.slice(0, 10) ?? "—"}</p>
-              <p><strong>Process Status:</strong> <Badge variant="secondary">{viewGatePass.process_status ?? "—"}</Badge></p>
-              <p><strong>Gate Pass Status:</strong> <Badge variant="secondary">{viewGatePass.gate_pass_status ?? "—"}</Badge></p>
-              <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
 
     </PageShell>
   )

@@ -362,6 +362,7 @@ export interface Invoice {
   handling_charge?: string
   transportation_charge?: string
   discount_amount?: string
+  terms_of_delivery?: string
   hsn_sac_code?: string
   other_reference?: string
   order_basis?: string

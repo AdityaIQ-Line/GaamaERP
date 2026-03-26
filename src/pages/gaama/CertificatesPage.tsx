@@ -10,12 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -158,6 +152,33 @@ export function CertificatesPage() {
     e.preventDefault()
     const grn = data.getGRN(createFromGrnId)
     if (!grn) return
+    if (!certBatchLot.trim()) {
+      toast.error("Batch / Lot No. is required.")
+      return
+    }
+    if (!certIrradiationDate.trim()) {
+      toast.error("Irradiation complete date is required.")
+      return
+    }
+    if (!certMinDose.trim() || !certAvgDose.trim()) {
+      toast.error("Minimum dose and average dose are required.")
+      return
+    }
+    if (!certDaeLicense.trim() || !certAerbLicense.trim()) {
+      toast.error("DAE and AERB license numbers are required.")
+      return
+    }
+    if (!certDosimeterBatch.trim()) {
+      toast.error("Dosimeter batch is required.")
+      return
+    }
+    if (
+      certProductRows.length === 0 ||
+      certProductRows.some((row) => !row.description.trim() || !row.quantity.trim())
+    ) {
+      toast.error("Each product row must include description and quantity.")
+      return
+    }
     const so = data.getSalesOrder(grn.sales_order_id ?? "")
     const certNo = `CERT-${new Date().getFullYear()}-${String(certificates.length + 1).padStart(3, "0")}`
     data.addCertificate({
@@ -197,9 +218,34 @@ export function CertificatesPage() {
     setTab("certificate")
   }
 
+  const [printAfterViewOpen, setPrintAfterViewOpen] = React.useState(false)
+
+  const closeCertificateView = React.useCallback(() => {
+    setMode(null)
+    setViewId(null)
+    setPrintAfterViewOpen(false)
+  }, [])
+
+  React.useEffect(() => {
+    if (mode !== "view" || !printAfterViewOpen || !viewId) return
+    if (!data.getCertificate(viewId)) return
+    const t = window.setTimeout(() => {
+      window.print()
+      setPrintAfterViewOpen(false)
+    }, 450)
+    return () => window.clearTimeout(t)
+  }, [mode, printAfterViewOpen, viewId])
+
   const openView = (c: Certificate) => {
+    setPrintAfterViewOpen(false)
     setViewId(c.certificate_id)
     setMode("view")
+  }
+
+  const openViewThenPrint = (c: Certificate) => {
+    setViewId(c.certificate_id)
+    setMode("view")
+    setPrintAfterViewOpen(true)
   }
 
   const filteredCerts = React.useMemo(() => {
@@ -217,8 +263,6 @@ export function CertificatesPage() {
     )
   }, [certificates, searchTerm])
 
-  const viewCert = viewId ? data.getCertificate(viewId) : null
-
   const cancelCreateCertificate = () => {
     if (!window.confirm("Discard changes?")) return
     setMode(null)
@@ -227,7 +271,7 @@ export function CertificatesPage() {
   const certificateCreateForm = (
     <div className="rounded-lg border border-border bg-card p-6 max-w-4xl">
       <form onSubmit={handleGenerateSubmit}>
-        <FormSection title="Sub category rows" noSeparator>
+        <FormSection title="Subcategory Rows" noSeparator>
           <div className="space-y-4 py-4">
             {certProductRows.map((row, idx) => (
               <div key={idx} className="grid grid-cols-4 gap-2">
@@ -369,6 +413,184 @@ export function CertificatesPage() {
     )
   }
 
+  if (allowed && mode === "view" && viewId) {
+    const c = data.getCertificate(viewId)
+    if (!c) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <div className="w-full h-full">
+              <PageHeaderWithBack title="Certificate" noBorder backButton={{ onClick: closeCertificateView }} />
+              <div className="px-6 py-4 text-muted-foreground">Certificate not found.</div>
+            </div>
+          </div>
+        </PageShell>
+      )
+    }
+    const title = `Certificate · ${c.certificate_no ?? c.certificate_id}`
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <div className="print:hidden">
+              <PageHeaderWithBack
+                title={title}
+                noBorder
+                backButton={{ onClick: closeCertificateView }}
+                actions={
+                  <>
+                    <Button type="button" variant="outline" className="h-9 rounded-md shadow-none" onClick={() => window.print()}>
+                      <Printer className="mr-2 h-4 w-4" />
+                      Print
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-md shadow-none"
+                      onClick={() => toast.info("Use Export on the certificate list for CSV, or Print to save as PDF.")}
+                    >
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
+                  </>
+                }
+              />
+            </div>
+            <div className="space-y-4 px-6 py-4 h-full print:py-2">
+              <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-foreground">Certificate details</h2>
+                  <Badge variant="secondary" className="font-normal">
+                    {c.status}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                  <p>
+                    <span className="font-medium text-foreground">Certificate No.: </span>
+                    {c.certificate_no ?? c.certificate_id}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Sales order: </span>
+                    {c.sales_order_number ?? c.sales_order_id}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Product category: </span>
+                    {c.product_category ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Subcategory: </span>
+                    {c.product_name ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Customer: </span>
+                    {c.customer_name ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Quantity: </span>
+                    {c.quantity ?? "—"} {c.units ?? ""}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Batch/Lot No.: </span>
+                    {c.batch_lot_no ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Irradiation date: </span>
+                    {c.irradiation_complete_date ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Minimum dose: </span>
+                    {c.minimum_dose ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Average dose: </span>
+                    {c.average_dose ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">DAE License No.: </span>
+                    {c.dae_license_no ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">AERB License No.: </span>
+                    {c.aerb_license_no ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">CRN: </span>
+                    {c.crn ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">INW: </span>
+                    {c.inw ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">JW: </span>
+                    {c.jw ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">SO date: </span>
+                    {c.so_date ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Dosimeter batch: </span>
+                    {c.dosimeter_batch ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Total boxes: </span>
+                    {c.total_boxes ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Total net weight: </span>
+                    {c.total_net_weight ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Total gross weight: </span>
+                    {c.total_gross_weight ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Unit serial from: </span>
+                    {c.unit_serial_from ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Unit serial to: </span>
+                    {c.unit_serial_to ?? "—"}
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Sticker range: </span>
+                    {c.sticker_range_start ?? "—"} – {c.sticker_range_end ?? "—"}
+                  </p>
+                </div>
+              </div>
+              {c.product_rows && c.product_rows.length > 0 && (
+                <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                  <h3 className="mb-4 text-base font-semibold text-foreground">Product rows</h3>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Sr</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead>Quantity</TableHead>
+                        <TableHead>Batch</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {c.product_rows.map((row, i) => (
+                        <TableRow key={i}>
+                          <TableCell>{row.sr_no}</TableCell>
+                          <TableCell>{row.description}</TableCell>
+                          <TableCell>{row.quantity}</TableCell>
+                          <TableCell>{row.batch}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
   return (
     <PageShell>
       {!allowed ? (
@@ -409,10 +631,10 @@ export function CertificatesPage() {
                         <TableRow>
                           <TableHead>GRN No</TableHead>
                           <TableHead>Sales Order</TableHead>
-                          <TableHead>Sub category</TableHead>
+                          <TableHead>Subcategory</TableHead>
                           <TableHead>Customer</TableHead>
                           <TableHead>Quantity</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -471,7 +693,7 @@ export function CertificatesPage() {
                                 "Certificate No": c.certificate_no ?? c.certificate_id,
                                 "Sales Order": c.sales_order_number ?? c.sales_order_id,
                                 "Product Category": c.product_category ?? "",
-                                "Sub category": c.product_name ?? "",
+                                Subcategory: c.product_name ?? "",
                                 Customer: c.customer_name ?? "",
                                 Quantity: c.quantity ?? "",
                                 Units: c.units ?? "",
@@ -521,7 +743,7 @@ export function CertificatesPage() {
                                 <TableCell><Badge variant="secondary">{c.status}</Badge></TableCell>
                                 <TableCell className="text-right">
                                   <Button variant="ghost" size="sm" title="View" onClick={() => openView(c)}><Eye className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="sm" title="Print" onClick={() => window.print()}><Printer className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => openViewThenPrint(c)}><Printer className="h-4 w-4" /></Button>
                                   <Button variant="ghost" size="sm" title="Download" onClick={() => toast.info("Download: use Print or Export.")}><Download className="h-4 w-4" /></Button>
                                 </TableCell>
                               </TableRow>
@@ -538,72 +760,6 @@ export function CertificatesPage() {
         </>
       )}
 
-      <Dialog open={mode === "view" && viewId !== null} onOpenChange={(open) => !open && (setMode(null), setViewId(null))}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Certificate Details</DialogTitle>
-          </DialogHeader>
-          {viewCert && (
-            <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <p><strong>Certificate No.:</strong> {viewCert.certificate_no ?? viewCert.certificate_id}</p>
-                <p><strong>Sales Order:</strong> {viewCert.sales_order_number ?? viewCert.sales_order_id}</p>
-                <p><strong>Product Category:</strong> {viewCert.product_category ?? "—"}</p>
-                <p><strong>Sub category:</strong> {viewCert.product_name ?? "—"}</p>
-                <p><strong>Customer:</strong> {viewCert.customer_name ?? "—"}</p>
-                <p><strong>Quantity:</strong> {viewCert.quantity ?? "—"} {viewCert.units ?? ""}</p>
-                <p><strong>Status:</strong> <Badge variant="secondary">{viewCert.status}</Badge></p>
-                <p><strong>Batch/Lot No.:</strong> {viewCert.batch_lot_no ?? "—"}</p>
-                <p><strong>Irradiation date:</strong> {viewCert.irradiation_complete_date ?? "—"}</p>
-                <p><strong>Minimum dose:</strong> {viewCert.minimum_dose ?? "—"}</p>
-                <p><strong>Average dose:</strong> {viewCert.average_dose ?? "—"}</p>
-                <p><strong>DAE License No.:</strong> {viewCert.dae_license_no ?? "—"}</p>
-                <p><strong>AERB License No.:</strong> {viewCert.aerb_license_no ?? "—"}</p>
-                <p><strong>CRN:</strong> {viewCert.crn ?? "—"}</p>
-                <p><strong>INW:</strong> {viewCert.inw ?? "—"}</p>
-                <p><strong>JW:</strong> {viewCert.jw ?? "—"}</p>
-                <p><strong>SO Date:</strong> {viewCert.so_date ?? "—"}</p>
-                <p><strong>Dosimeter Batch:</strong> {viewCert.dosimeter_batch ?? "—"}</p>
-                <p><strong>Total Boxes:</strong> {viewCert.total_boxes ?? "—"}</p>
-                <p><strong>Total Net Weight:</strong> {viewCert.total_net_weight ?? "—"}</p>
-                <p><strong>Total Gross Weight:</strong> {viewCert.total_gross_weight ?? "—"}</p>
-                <p><strong>Unit Serial From:</strong> {viewCert.unit_serial_from ?? "—"}</p>
-                <p><strong>Unit Serial To:</strong> {viewCert.unit_serial_to ?? "—"}</p>
-                <p><strong>Sticker range:</strong> {viewCert.sticker_range_start ?? "—"} – {viewCert.sticker_range_end ?? "—"}</p>
-              </div>
-              {viewCert.product_rows && viewCert.product_rows.length > 0 && (
-                <div className="border-t pt-4">
-                  <h4 className="font-medium mb-2">Sub category rows</h4>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Sr</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Quantity</TableHead>
-                        <TableHead>Batch</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {viewCert.product_rows.map((row, i) => (
-                        <TableRow key={i}>
-                          <TableCell>{row.sr_no}</TableCell>
-                          <TableCell>{row.description}</TableCell>
-                          <TableCell>{row.quantity}</TableCell>
-                          <TableCell>{row.batch}</TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-              <div className="flex gap-2 pt-4">
-                <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
-                <Button variant="outline" onClick={() => toast.info("Download: use Print or Export from list.")}><Download className="h-4 w-4 mr-2" />Download</Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </PageShell>
   )
 }

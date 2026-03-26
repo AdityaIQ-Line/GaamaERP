@@ -10,13 +10,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog"
 import { FormSection } from "@/components/patterns/form-section"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +31,7 @@ import { useData, canAccess } from "@/context/DataContext"
 import type { Invoice, Challan } from "@/lib/gaama-types"
 import { Receipt, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
@@ -68,6 +62,15 @@ export function InvoicesPage() {
   const [createChallanId, setCreateChallanId] = React.useState("")
   const [createAmount, setCreateAmount] = React.useState("")
   const [createGstPct, setCreateGstPct] = React.useState("18")
+  const [createDiscount, setCreateDiscount] = React.useState("0")
+  const [createHandlingCharge, setCreateHandlingCharge] = React.useState("0")
+  const [createTransportationCharge, setCreateTransportationCharge] = React.useState("0")
+  const [createHsnSacCode, setCreateHsnSacCode] = React.useState("")
+  const [createShippingAddress, setCreateShippingAddress] = React.useState("")
+  const [createOtherReference, setCreateOtherReference] = React.useState("")
+  const [createTermsOfDelivery, setCreateTermsOfDelivery] = React.useState("")
+  const [includeHandlingCharge, setIncludeHandlingCharge] = React.useState(false)
+  const [includeTransportationCharge, setIncludeTransportationCharge] = React.useState(false)
   const [form, setForm] = React.useState({
     sales_order_id: "",
     invoice_date: new Date().toISOString().slice(0, 10),
@@ -113,6 +116,15 @@ export function InvoicesPage() {
     setCreateChallanId(challan.challan_id)
     setCreateAmount(String(base))
     setCreateGstPct(String(gstPct))
+    setCreateDiscount("0")
+    setCreateHandlingCharge("0")
+    setCreateTransportationCharge("0")
+    setCreateHsnSacCode(challan.hsn_sac_code ?? "")
+    setCreateShippingAddress(challan.shipping_address ?? "")
+    setCreateOtherReference(challan.delivery_note ?? "")
+    setCreateTermsOfDelivery(challan.terms_of_delivery ?? "")
+    setIncludeHandlingCharge(false)
+    setIncludeTransportationCharge(false)
     setForm({
       sales_order_id: soId,
       invoice_date: new Date().toISOString().slice(0, 10),
@@ -128,9 +140,26 @@ export function InvoicesPage() {
     e.preventDefault()
     const base = parseFloat(createAmount) || 0
     const gstPct = parseFloat(createGstPct) || 0
-    const tax = (base * gstPct) / 100
+    const discount = parseFloat(createDiscount) || 0
+    const handling = includeHandlingCharge ? parseFloat(createHandlingCharge) || 0 : 0
+    const transportation = includeTransportationCharge ? parseFloat(createTransportationCharge) || 0 : 0
+    const subTotal = Math.max(0, base - discount + handling + transportation)
+    const tax = (subTotal * gstPct) / 100
+    const grandTotal = subTotal + tax
     const challan = data.getChallan(createChallanId)
     const so = data.getSalesOrder(form.sales_order_id)
+    if (!createShippingAddress.trim()) {
+      toast.error("Shipping address is required.")
+      return
+    }
+    if (!createHsnSacCode.trim()) {
+      toast.error("HSN/SAC code is required.")
+      return
+    }
+    if (!createTermsOfDelivery.trim()) {
+      toast.error("Terms of delivery is required.")
+      return
+    }
     data.addInvoice({
       sales_order_id: form.sales_order_id,
       sales_order_number: so?.sales_order_number ?? so?.order_number,
@@ -144,21 +173,47 @@ export function InvoicesPage() {
       quantity: so?.quantity,
       unit: so?.unit,
       invoice_date: new Date(form.invoice_date).toISOString(),
-      amount: base,
+      amount: subTotal,
       tax,
-      grand_total: base + tax,
+      grand_total: grandTotal,
       payment_status: "pending",
       status: "Generated",
       base_amount: String(base),
       gst_percentage: String(gstPct),
-      total_amount: String(base + tax),
+      total_amount: String(grandTotal),
+      discount_amount: String(discount),
+      handling_charge: String(handling),
+      transportation_charge: String(transportation),
+      hsn_sac_code: createHsnSacCode.trim(),
+      shipping_address: createShippingAddress.trim(),
+      other_reference: createOtherReference.trim() || undefined,
+      terms_of_delivery: createTermsOfDelivery.trim(),
     })
     toast.success("Invoice created.")
     setMode(null)
     setTab("invoices")
   }
 
+  const [printAfterViewOpen, setPrintAfterViewOpen] = React.useState(false)
+
+  const closeInvoiceDetail = React.useCallback(() => {
+    setMode(null)
+    setSelectedId(null)
+    setPrintAfterViewOpen(false)
+  }, [])
+
+  React.useEffect(() => {
+    if (mode !== "view" || !printAfterViewOpen || !selectedId) return
+    if (!data.getInvoice(selectedId)) return
+    const t = window.setTimeout(() => {
+      window.print()
+      setPrintAfterViewOpen(false)
+    }, 450)
+    return () => window.clearTimeout(t)
+  }, [mode, printAfterViewOpen, selectedId])
+
   const openView = (i: Invoice) => {
+    setPrintAfterViewOpen(false)
     setForm({
       sales_order_id: i.sales_order_id,
       invoice_date: (i.invoice_date ?? i.created_at ?? "").toString().slice(0, 10),
@@ -169,6 +224,20 @@ export function InvoicesPage() {
     })
     setSelectedId(i.invoice_id)
     setMode("view")
+  }
+
+  const openViewThenPrint = (i: Invoice) => {
+    setForm({
+      sales_order_id: i.sales_order_id,
+      invoice_date: (i.invoice_date ?? i.created_at ?? "").toString().slice(0, 10),
+      amount: i.amount,
+      tax: i.tax,
+      grand_total: i.grand_total,
+      payment_status: i.payment_status,
+    })
+    setSelectedId(i.invoice_id)
+    setMode("view")
+    setPrintAfterViewOpen(true)
   }
 
   const openEdit = (i: Invoice) => {
@@ -192,7 +261,7 @@ export function InvoicesPage() {
       invoice_date: form.invoice_date ? new Date(form.invoice_date).toISOString() : undefined,
     })
     toast.success("Invoice updated.")
-    setMode(null)
+    closeInvoiceDetail()
   }
 
   const filteredInvoices = React.useMemo(() => {
@@ -209,6 +278,32 @@ export function InvoicesPage() {
       (i) => i.invoice_id
     )
   }, [invoices, searchTerm])
+
+  const createBaseAmount = parseFloat(createAmount) || 0
+  const createGstPercentage = parseFloat(createGstPct) || 0
+  const createDiscountAmount = parseFloat(createDiscount) || 0
+  const createHandlingAmount = parseFloat(createHandlingCharge) || 0
+  const createTransportationAmount = parseFloat(createTransportationCharge) || 0
+  const createSubTotal = Math.max(
+    0,
+    createBaseAmount - createDiscountAmount + createHandlingAmount + createTransportationAmount
+  )
+  const createTaxAmount = (createSubTotal * createGstPercentage) / 100
+  const createGrandTotal = createSubTotal + createTaxAmount
+
+  const selectedCreateChallan = createChallanId ? data.getChallan(createChallanId) : undefined
+  const selectedCreateCustomer =
+    selectedCreateChallan?.customer_id
+      ? data.getCustomer(selectedCreateChallan.customer_id)
+      : form.sales_order_id
+        ? data.getCustomer(data.getSalesOrder(form.sales_order_id)?.customer_id ?? "")
+        : undefined
+  const createShippingOptions =
+    selectedCreateCustomer?.shipping_addresses_typed?.length
+      ? selectedCreateCustomer.shipping_addresses_typed.map((a) => a.address)
+      : selectedCreateCustomer?.billing_address
+        ? [selectedCreateCustomer.billing_address]
+        : []
 
   const invoiceCreateForm = (
     <div className="rounded-lg border border-border bg-card p-6">
@@ -232,16 +327,78 @@ export function InvoicesPage() {
               <Input type="number" value={createGstPct} onChange={(e) => setCreateGstPct(e.target.value)} />
             </div>
             <div className="space-y-2">
+              <Label>Discount</Label>
+              <Input type="number" value={createDiscount} onChange={(e) => setCreateDiscount(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Handling Charge</Label>
+              <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
+                <Switch checked={includeHandlingCharge} onCheckedChange={(v) => setIncludeHandlingCharge(Boolean(v))} />
+                <span className="text-sm text-muted-foreground">Apply handling charge</span>
+              </div>
+              <Input
+                type="number"
+                value={createHandlingCharge}
+                onChange={(e) => setCreateHandlingCharge(e.target.value)}
+                disabled={!includeHandlingCharge}
+                className={!includeHandlingCharge ? "bg-muted" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Transportation Charge</Label>
+              <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
+                <Switch checked={includeTransportationCharge} onCheckedChange={(v) => setIncludeTransportationCharge(Boolean(v))} />
+                <span className="text-sm text-muted-foreground">Apply transportation charge</span>
+              </div>
+              <Input
+                type="number"
+                value={createTransportationCharge}
+                onChange={(e) => setCreateTransportationCharge(e.target.value)}
+                disabled={!includeTransportationCharge}
+                className={!includeTransportationCharge ? "bg-muted" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>HSN / SAC Code *</Label>
+              <Input value={createHsnSacCode} onChange={(e) => setCreateHsnSacCode(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Shipping Address *</Label>
+              {createShippingOptions.length > 0 ? (
+                <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shipping address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {createShippingOptions.map((addr, i) => (
+                      <SelectItem key={i} value={addr}>
+                        {addr.length > 60 ? addr.slice(0, 60) + "…" : addr}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : null}
+              <Input
+                value={createShippingAddress}
+                onChange={(e) => setCreateShippingAddress(e.target.value)}
+                placeholder="Enter shipping address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Other Reference</Label>
+              <Input value={createOtherReference} onChange={(e) => setCreateOtherReference(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Terms of Delivery *</Label>
+              <Input value={createTermsOfDelivery} onChange={(e) => setCreateTermsOfDelivery(e.target.value)} />
+            </div>
+            <div className="space-y-2">
               <Label>Tax</Label>
-              <Input value={((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100} readOnly className="bg-muted" />
+              <Input value={createTaxAmount} readOnly className="bg-muted" />
             </div>
             <div className="space-y-2">
               <Label>Grand Total</Label>
-              <Input
-                value={(parseFloat(createAmount) || 0) + ((parseFloat(createAmount) || 0) * (parseFloat(createGstPct) || 0)) / 100}
-                readOnly
-                className="bg-muted"
-              />
+              <Input value={createGrandTotal} readOnly className="bg-muted" />
             </div>
           </div>
         </FormSection>
@@ -274,6 +431,235 @@ export function InvoicesPage() {
               }}
             />
             <div className="space-y-4 px-6 py-4 h-full">{invoiceCreateForm}</div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  const readOnlyInvoiceClass =
+    "h-9 cursor-not-allowed rounded-md border-transparent bg-muted text-muted-foreground"
+
+  if (allowed && mode === "view" && selectedId) {
+    const inv = data.getInvoice(selectedId)
+    if (!inv) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <div className="w-full h-full">
+              <PageHeaderWithBack title="Invoice" noBorder backButton={{ onClick: closeInvoiceDetail }} />
+              <div className="px-6 py-4 text-muted-foreground">Invoice not found.</div>
+            </div>
+          </div>
+        </PageShell>
+      )
+    }
+    const title = `Invoice · ${inv.invoice_number ?? inv.invoice_id}`
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <div className="print:hidden">
+              <PageHeaderWithBack
+                title={title}
+                noBorder
+                backButton={{ onClick: closeInvoiceDetail }}
+                actions={
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-md shadow-none"
+                      onClick={() => openEdit(inv)}
+                    >
+                      <Pencil className="mr-2 h-4 w-4" />
+                      Edit
+                    </Button>
+                    <Button type="button" className="h-9 rounded-md shadow-none" onClick={() => window.print()}>
+                      <Printer className="mr-2 h-4 w-4" />
+                      Print
+                    </Button>
+                  </>
+                }
+              />
+            </div>
+            <div className="space-y-4 px-6 py-4 h-full print:py-2">
+              <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h2 className="text-lg font-semibold text-foreground">Invoice summary</h2>
+                  <Badge variant="secondary" className="font-normal capitalize">
+                    {form.payment_status}
+                  </Badge>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Sales order</Label>
+                    <Input readOnly value={inv.sales_order_number ?? inv.sales_order_id} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Challan number(s)</Label>
+                    <Input readOnly value={inv.challan_numbers ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Customer</Label>
+                    <Input readOnly value={inv.customer_name ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Category</Label>
+                    <Input readOnly value={inv.category_name ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Quantity</Label>
+                    <Input readOnly value={inv.quantity ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Unit</Label>
+                    <Input readOnly value={inv.unit ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Invoice date</Label>
+                    <Input readOnly value={form.invoice_date} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Amount</Label>
+                    <Input readOnly value={String(form.amount)} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Tax</Label>
+                    <Input readOnly value={String(form.tax)} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">HSN/SAC Code</Label>
+                    <Input readOnly value={inv.hsn_sac_code ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs text-muted-foreground">Shipping address</Label>
+                    <Input readOnly value={inv.shipping_address ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Discount</Label>
+                    <Input readOnly value={inv.discount_amount ?? "0"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Handling charge</Label>
+                    <Input readOnly value={inv.handling_charge ?? "0"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Transportation charge</Label>
+                    <Input readOnly value={inv.transportation_charge ?? "0"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Terms of delivery</Label>
+                    <Input readOnly value={inv.terms_of_delivery ?? "—"} className={readOnlyInvoiceClass} />
+                  </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs text-muted-foreground">Grand total</Label>
+                    <Input readOnly value={String(form.grand_total)} className={readOnlyInvoiceClass} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </PageShell>
+    )
+  }
+
+  if (allowed && mode === "edit" && selectedId) {
+    const inv = data.getInvoice(selectedId)
+    if (!inv) {
+      return (
+        <PageShell>
+          <div className="flex-1 overflow-auto">
+            <div className="w-full h-full">
+              <PageHeaderWithBack title="Edit Invoice" noBorder backButton={{ onClick: closeInvoiceDetail }} />
+              <div className="px-6 py-4 text-muted-foreground">Invoice not found.</div>
+            </div>
+          </div>
+        </PageShell>
+      )
+    }
+    return (
+      <PageShell>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full h-full">
+            <PageHeaderWithBack
+              title={`Edit invoice · ${inv.invoice_number ?? inv.invoice_id}`}
+              noBorder
+              backButton={{
+                onClick: () => {
+                  if (!window.confirm("Discard changes?")) return
+                  closeInvoiceDetail()
+                },
+              }}
+            />
+            <form onSubmit={handleEditSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="space-y-4 px-6 py-4">
+                <div className="rounded-[10px] border border-border bg-card p-5 shadow-sm md:p-6">
+                  <h2 className="mb-4 text-lg font-semibold text-foreground">Invoice information</h2>
+                  <p className="mb-4 text-xs text-muted-foreground">
+                    Amounts are read-only. Update payment status and invoice date if needed.
+                  </p>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Sales order</Label>
+                      <Input readOnly value={inv.sales_order_number ?? inv.sales_order_id} className={readOnlyInvoiceClass} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Invoice date</Label>
+                      <Input
+                        type="date"
+                        value={form.invoice_date}
+                        onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))}
+                        className="h-9 rounded-md border-border bg-muted/60"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Amount</Label>
+                      <Input type="number" value={form.amount || ""} readOnly className={readOnlyInvoiceClass} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-muted-foreground">Tax</Label>
+                      <Input type="number" value={form.tax || ""} readOnly className={readOnlyInvoiceClass} />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs text-muted-foreground">Grand total</Label>
+                      <Input type="number" value={form.grand_total || ""} readOnly className={readOnlyInvoiceClass} />
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs font-medium">Payment status</Label>
+                      <Select
+                        value={form.payment_status}
+                        onValueChange={(v: Invoice["payment_status"]) => setForm((f) => ({ ...f, payment_status: v }))}
+                      >
+                        <SelectTrigger className="h-9 max-w-md bg-muted/60 border-border">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="paid">Paid</SelectItem>
+                          <SelectItem value="partial">Partial</SelectItem>
+                          <SelectItem value="overdue">Overdue</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-auto flex flex-wrap justify-end gap-2 border-t border-border px-6 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    if (!window.confirm("Discard changes?")) return
+                    closeInvoiceDetail()
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">Save</Button>
+              </div>
+            </form>
           </div>
         </div>
       </PageShell>
@@ -326,7 +712,7 @@ export function InvoicesPage() {
                           <TableHead>Quantity</TableHead>
                           <TableHead>Unit</TableHead>
                           <TableHead>Requested Date/Time</TableHead>
-                          <TableHead className="text-right">Action</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -449,8 +835,15 @@ export function InvoicesPage() {
                                 <TableCell className="text-right">
                                   <Button variant="ghost" size="sm" title="View" onClick={() => openView(i)}><Eye className="h-4 w-4" /></Button>
                                   <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="sm" title="Print" onClick={() => { openView(i); setTimeout(() => window.print(), 300); }}><Printer className="h-4 w-4" /></Button>
-                                  <Button variant="ghost" size="sm" title="Export" onClick={() => { openView(i); toast.info("Use Print in the dialog to save as PDF."); }}><Download className="h-4 w-4" /></Button>
+                                  <Button variant="ghost" size="sm" title="Print" onClick={() => openViewThenPrint(i)}><Printer className="h-4 w-4" /></Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    title="Export"
+                                    onClick={() => toast.info("Open the invoice, then use Print to save as PDF.")}
+                                  >
+                                    <Download className="h-4 w-4" />
+                                  </Button>
                                 </TableCell>
                               </TableRow>
                             ))}
@@ -465,69 +858,6 @@ export function InvoicesPage() {
           </div>
         </>
       )}
-
-      <Dialog open={mode === "view" || mode === "edit"} onOpenChange={(open) => !open && setMode(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>{mode === "view" ? "Invoice Details" : "Edit Invoice"}</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={handleEditSubmit}>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Sales Order</Label>
-                <Input value={form.sales_order_id} readOnly className="bg-muted" />
-              </div>
-              <div className="space-y-2">
-                <Label>Invoice Date</Label>
-                <Input type="date" value={form.invoice_date} onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))} readOnly={mode === "view"} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Amount</Label>
-                  <Input type="number" value={form.amount || ""} readOnly />
-                </div>
-                <div className="space-y-2">
-                  <Label>Tax</Label>
-                  <Input type="number" value={form.tax || ""} readOnly />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Grand Total</Label>
-                <Input type="number" value={form.grand_total || ""} readOnly />
-              </div>
-              {mode === "edit" && (
-                <div className="space-y-2">
-                  <Label>Payment Status</Label>
-                  <Select value={form.payment_status} onValueChange={(v: Invoice["payment_status"]) => setForm((f) => ({ ...f, payment_status: v }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pending">Pending</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="partial">Partial</SelectItem>
-                      <SelectItem value="overdue">Overdue</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              {mode === "view" && (
-                <div className="space-y-2">
-                  <Label>Payment Status</Label>
-                  <Badge variant="secondary">{form.payment_status}</Badge>
-                </div>
-              )}
-            </div>
-            {mode === "edit" && (
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setMode(null)}>Cancel</Button>
-                <Button type="submit">Save</Button>
-              </DialogFooter>
-            )}
-            {mode === "view" && (
-              <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4 mr-2" />Print</Button>
-            )}
-          </form>
-        </DialogContent>
-      </Dialog>
     </PageShell>
   )
 }
