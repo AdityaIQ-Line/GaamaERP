@@ -50,6 +50,14 @@ import { cn, latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type ModalMode = "create" | "edit" | "view" | null
 const PROCESSING_PRIORITY_OPTIONS = ["High", "Medium", "Low"] as const
+const PROCESSING_PRIORITY_NONE = "__processing_priority_none__"
+const GST_RATE_OPTIONS = ["0", "5", "12", "18", "28"] as const
+
+const MEASUREMENT_TYPE_LABELS: Record<string, string> = {
+  carton: "Carton",
+  bag: "Bag",
+  weight: "Weight",
+}
 
 /** SO / GRN snapshot row: plain text or sub categories as badges (multi-value). */
 type GrnSoSummaryRow =
@@ -109,6 +117,8 @@ export function GRNPage() {
   const [radiationUnit, setRadiationUnit] = React.useState("kGy")
   const [remarks, setRemarks] = React.useState("")
   const [rate, setRate] = React.useState("")
+  /** Line amount before GST (₹); mandatory. Rate is optional. */
+  const [amountBeforeGst, setAmountBeforeGst] = React.useState("")
   const [gstPercentage, setGstPercentage] = React.useState("18")
   const [processingPriority, setProcessingPriority] = React.useState("")
   const [binDescription, setBinDescription] = React.useState("")
@@ -193,18 +203,22 @@ export function GRNPage() {
           : `Ref-${selectedOrder.sales_order_number ?? selectedOrder.sales_order_id ?? "SO"}`
       )
       setReceivedBy((prev) => (prev.trim() ? prev : "Warehouse"))
-      setProcessingPriority((prev) => (prev.trim() ? prev : "Medium"))
+      setProcessingPriority((prev) => (prev.trim() ? prev : ""))
       setRemarks((prev) => (prev.trim() ? prev : (selectedOrder.notes ?? "")))
       setReceivedDate(new Date().toISOString().slice(0, 10))
     }
   }, [selectedOrder, selectedCategory, mode])
 
-  // Recompute total and GST when rate or qty or gst% change
-  const totalAmount = (() => {
-    const r = parseFloat(rate) || 0
-    const q = parseFloat(receivedQuantity) || 0
-    return r * q
-  })()
+  // Create only: when rate and received qty are set, keep amount aligned with rate × qty.
+  React.useEffect(() => {
+    if (mode !== "create") return
+    const r = parseFloat(rate)
+    const q = parseFloat(receivedQuantity)
+    if (isNaN(r) || r <= 0 || isNaN(q) || q <= 0) return
+    setAmountBeforeGst(String(r * q))
+  }, [rate, receivedQuantity, mode])
+
+  const totalAmount = parseFloat(amountBeforeGst) || 0
   const gstAmount = (totalAmount * (parseFloat(gstPercentage) || 0)) / 100
   const totalWithGst = totalAmount + gstAmount
 
@@ -244,6 +258,7 @@ export function GRNPage() {
     setRadiationUnit("kGy")
     setRemarks("")
     setRate("")
+    setAmountBeforeGst("")
     setGstPercentage("18")
     setProcessingPriority("")
     setBinDescription("")
@@ -264,8 +279,21 @@ export function GRNPage() {
     setRadiationDose(g.radiation_dose ?? "")
     setRadiationUnit(g.radiation_unit ?? "kGy")
     setRemarks(g.remarks ?? "")
-    setRate(g.rate ?? g.pricing ?? "")
-    setGstPercentage(g.gst_percentage ?? "18")
+    setRate(g.rate ?? "")
+    setAmountBeforeGst(
+      g.pricing?.trim()
+        ? g.pricing
+        : g.rate && g.received_quantity
+          ? String(
+              (parseFloat(g.rate) || 0) * (parseFloat(String(g.received_quantity)) || 0)
+            )
+          : ""
+    )
+    setGstPercentage(
+      g.gst_percentage != null && GST_RATE_OPTIONS.includes(g.gst_percentage as (typeof GST_RATE_OPTIONS)[number])
+        ? g.gst_percentage
+        : "18"
+    )
     setProcessingPriority(g.processing_priority ?? "")
     setBinDescription(g.bin_description ?? "")
     setSelectedId(g.grn_id)
@@ -285,8 +313,21 @@ export function GRNPage() {
     setRadiationDose(g.radiation_dose ?? "")
     setRadiationUnit(g.radiation_unit ?? "kGy")
     setRemarks(g.remarks ?? "")
-    setRate(g.rate ?? g.pricing ?? "")
-    setGstPercentage(g.gst_percentage ?? "18")
+    setRate(g.rate ?? "")
+    setAmountBeforeGst(
+      g.pricing?.trim()
+        ? g.pricing
+        : g.rate && g.received_quantity
+          ? String(
+              (parseFloat(g.rate) || 0) * (parseFloat(String(g.received_quantity)) || 0)
+            )
+          : ""
+    )
+    setGstPercentage(
+      g.gst_percentage != null && GST_RATE_OPTIONS.includes(g.gst_percentage as (typeof GST_RATE_OPTIONS)[number])
+        ? g.gst_percentage
+        : "18"
+    )
     setProcessingPriority(g.processing_priority ?? "")
     setBinDescription(g.bin_description ?? "")
     setSelectedId(g.grn_id)
@@ -304,7 +345,26 @@ export function GRNPage() {
       return
     }
     if (!customerChallanNumber.trim()) {
-      alert("Customer challan reference is missing. Select a sales order to auto-fill.")
+      alert("Customer challan number is required.")
+      return
+    }
+    const order = data.getSalesOrder(salesOrderId)
+    if (!order) {
+      alert("Sales order not found.")
+      return
+    }
+    if (!String(order.product_name ?? "").trim()) {
+      alert(
+        "Product subcategory is required on the sales order. Add a sub category on the order or choose another order."
+      )
+      return
+    }
+    if (!radiationDose.trim() || !radiationUnit.trim()) {
+      alert("Radiation dose and unit are required (auto-filled from Category Master when category is set).")
+      return
+    }
+    if (!receivedBy.trim()) {
+      alert("Received By is required.")
       return
     }
     const qty = parseFloat(receivedQuantity) || 0
@@ -316,8 +376,20 @@ export function GRNPage() {
       alert("Net weight and gross weight are required.")
       return
     }
-    if (!PROCESSING_PRIORITY_OPTIONS.includes(processingPriority as (typeof PROCESSING_PRIORITY_OPTIONS)[number])) {
-      alert("Select a valid processing priority (High, Medium, or Low).")
+    if (
+      processingPriority.trim() &&
+      !PROCESSING_PRIORITY_OPTIONS.includes(processingPriority as (typeof PROCESSING_PRIORITY_OPTIONS)[number])
+    ) {
+      alert("Processing priority must be High, Medium, Low, or left empty.")
+      return
+    }
+    if (!gstPercentage.trim() || !GST_RATE_OPTIONS.includes(gstPercentage as (typeof GST_RATE_OPTIONS)[number])) {
+      alert("Select a GST rate.")
+      return
+    }
+    const baseAmt = parseFloat(amountBeforeGst)
+    if (amountBeforeGst.trim() === "" || Number.isNaN(baseAmt) || baseAmt < 0) {
+      alert("Amount (₹) is required and must be a valid non-negative number.")
       return
     }
     const net = parseFloat(netWeight)
@@ -327,7 +399,6 @@ export function GRNPage() {
       return
     }
 
-    const order = data.getSalesOrder(salesOrderId)
     const cust = data.getCustomer(customerId)
     const cat = order?.category_id ? data.getCategory(order.category_id) : undefined
 
@@ -349,12 +420,12 @@ export function GRNPage() {
       processing_priority: processingPriority || undefined,
       received_date: new Date(receivedDate).toISOString(),
       status: "Pending",
-      rate: rate || undefined,
-      pricing: rate ? String(totalAmount) : undefined,
-      gst_percentage: gstPercentage || undefined,
-      gst_amount: rate ? String(gstAmount.toFixed(2)) : undefined,
-      total_amount: rate ? String(totalWithGst.toFixed(2)) : undefined,
-      received_by: receivedBy.trim() || "Warehouse",
+      rate: rate.trim() || undefined,
+      pricing: String(baseAmt),
+      gst_percentage: gstPercentage,
+      gst_amount: String(gstAmount.toFixed(2)),
+      total_amount: String(totalWithGst.toFixed(2)),
+      received_by: receivedBy.trim(),
       radiation_dose: radiationDose || undefined,
       radiation_unit: radiationUnit,
       remarks: remarks || undefined,
@@ -368,6 +439,37 @@ export function GRNPage() {
   const handleUpdateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!selectedId) return
+    if (!customerId) {
+      alert("No customer is set.")
+      return
+    }
+    if (!salesOrderId) {
+      alert("No sales order is linked.")
+      return
+    }
+    if (!customerChallanNumber.trim()) {
+      alert("Customer challan number is required.")
+      return
+    }
+    const order = data.getSalesOrder(salesOrderId)
+    if (!order) {
+      alert("Sales order not found.")
+      return
+    }
+    if (!String(order.product_name ?? "").trim()) {
+      alert(
+        "Product subcategory is required on the sales order. Add a sub category on the order or choose another order."
+      )
+      return
+    }
+    if (!radiationDose.trim() || !radiationUnit.trim()) {
+      alert("Radiation dose and unit are required.")
+      return
+    }
+    if (!receivedBy.trim()) {
+      alert("Received By is required.")
+      return
+    }
     const qty = parseFloat(receivedQuantity) || 0
     if (qty <= 0) {
       alert("Received Quantity must be greater than 0.")
@@ -377,16 +479,49 @@ export function GRNPage() {
       alert("Net weight and gross weight are required.")
       return
     }
+    if (
+      processingPriority.trim() &&
+      !PROCESSING_PRIORITY_OPTIONS.includes(processingPriority as (typeof PROCESSING_PRIORITY_OPTIONS)[number])
+    ) {
+      alert("Processing priority must be High, Medium, Low, or left empty.")
+      return
+    }
+    if (!gstPercentage.trim() || !GST_RATE_OPTIONS.includes(gstPercentage as (typeof GST_RATE_OPTIONS)[number])) {
+      alert("Select a GST rate.")
+      return
+    }
+    const baseAmt = parseFloat(amountBeforeGst)
+    if (amountBeforeGst.trim() === "" || Number.isNaN(baseAmt) || baseAmt < 0) {
+      alert("Amount (₹) is required and must be a valid non-negative number.")
+      return
+    }
     const net = parseFloat(netWeight)
     const gross = parseFloat(grossWeight)
     if (!isNaN(gross) && !isNaN(net) && gross < net) {
       alert("Gross weight must be greater than or equal to net weight.")
       return
     }
+
     data.updateGRN(selectedId, {
+      customer_challan_number: customerChallanNumber.trim(),
       received_quantity: String(qty),
       net_weight: netWeight || undefined,
       gross_weight: grossWeight || undefined,
+      received_by: receivedBy.trim(),
+      remarks: remarks.trim() || undefined,
+      bin_description: binDescription.trim() || undefined,
+      processing_priority: processingPriority || undefined,
+      rate: rate.trim() || undefined,
+      pricing: String(baseAmt),
+      gst_percentage: gstPercentage,
+      gst_amount: String(gstAmount.toFixed(2)),
+      total_amount: String(totalWithGst.toFixed(2)),
+      radiation_dose: radiationDose || undefined,
+      radiation_unit: radiationUnit,
+      purchase_order_date: purchaseOrderDate
+        ? new Date(purchaseOrderDate).toISOString().slice(0, 10)
+        : undefined,
+      received_date: new Date(receivedDate).toISOString(),
     })
     closeGrnForm()
     toast.success("GRN updated.")
@@ -476,6 +611,7 @@ export function GRNPage() {
 
   const useFullGrnLayout = mode === "create" || mode === "edit" || mode === "view"
   const canEditQtyWeights = mode === "create" || mode === "edit"
+  const pricingEditable = canEditQtyWeights
 
   const grnEditorForm = (
     <form
@@ -542,7 +678,7 @@ export function GRNPage() {
                   {(
                     [
                       {
-                        label: "Sales Order No.",
+                        label: "Sales Order No",
                         value:
                           selectedOrder.sales_order_number ??
                           selectedOrder.order_number ??
@@ -565,7 +701,7 @@ export function GRNPage() {
                           "—",
                       },
                       {
-                        label: "Sub category",
+                        label: "Product Subcategory",
                         badgeValues: parseSubCategoryLabels(selectedOrder.product_name),
                       },
                       { label: "Product Category", value: selectedOrder.category_name ?? "—" },
@@ -574,9 +710,13 @@ export function GRNPage() {
                         value: selectedOrder.order_basis ?? "—",
                       },
                       {
-                        label: "Measurement / Unit",
-                        value: [selectedOrder.measurement_type, selectedOrder.unit].filter(Boolean).join(" · ") || "—",
+                        label: "Measurement Type",
+                        value:
+                          MEASUREMENT_TYPE_LABELS[selectedOrder.measurement_type ?? ""] ??
+                          selectedOrder.measurement_type ??
+                          "—",
                       },
+                      { label: "Unit", value: selectedOrder.unit ?? "—" },
                       { label: "Total Ordered Quantity", value: String(soOrderedQty) },
                       {
                         label: "Net Weight (SO)",
@@ -623,7 +763,7 @@ export function GRNPage() {
                   {(
                     [
                       {
-                        label: "Sales Order No.",
+                        label: "Sales Order No",
                         value:
                           snapshotGrn.sales_order_number ??
                           snapshotGrn.sales_order_id ??
@@ -640,15 +780,13 @@ export function GRNPage() {
                           "—",
                       },
                       {
-                        label: "Sub category",
+                        label: "Product Subcategory",
                         badgeValues: parseSubCategoryLabels(snapshotGrn.product_name),
                       },
                       { label: "Product Category", value: snapshotGrn.category_name ?? "—" },
                       { label: "Order Basis", value: "—" },
-                      {
-                        label: "Measurement / Unit",
-                        value: snapshotGrn.unit ?? "—",
-                      },
+                      { label: "Measurement Type", value: "—" },
+                      { label: "Unit", value: snapshotGrn.unit ?? "—" },
                       { label: "Total Ordered Quantity", value: "—" },
                       {
                         label: "Net Weight (SO)",
@@ -719,14 +857,23 @@ export function GRNPage() {
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Customer Challan Number
                 </Label>
-                <Input readOnly value={customerChallanNumber} className={readOnlyFieldClass} />
+                <Input
+                  readOnly={!canEditQtyWeights}
+                  value={customerChallanNumber}
+                  onChange={(e) => setCustomerChallanNumber(e.target.value)}
+                  className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
+                />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs font-medium">Radiation Dose (Auto-filled)</Label>
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Radiation Dose (Auto-filled)
+                </Label>
                 <Input readOnly value={radiationDose} className={cn(inputPencilMuted, "text-muted-foreground")} />
               </div>
               <div className="space-y-1 min-w-0">
-                <Label className="text-xs font-medium">Radiation Unit</Label>
+                <Label className="text-xs font-medium">
+                  <span className="text-destructive">*</span> Radiation Unit
+                </Label>
                 <Input readOnly value={radiationUnit} className={cn(inputPencilMuted, "text-muted-foreground")} />
               </div>
               <div className="space-y-1 min-w-0">
@@ -753,7 +900,12 @@ export function GRNPage() {
                 <Label className="text-xs font-medium">
                   <span className="text-destructive">*</span> Received By
                 </Label>
-                <Input readOnly value={receivedBy} className={readOnlyFieldClass} />
+                <Input
+                  readOnly={!canEditQtyWeights}
+                  value={receivedBy}
+                  onChange={(e) => setReceivedBy(e.target.value)}
+                  className={canEditQtyWeights ? inputPencil : readOnlyFieldClass}
+                />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
@@ -785,15 +937,19 @@ export function GRNPage() {
                 <p className="text-xs text-muted-foreground">Must be &gt;= Net Weight</p>
               </div>
               <div className="space-y-1 min-w-0">
-                <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Processing Priority
-                </Label>
-                {mode === "create" ? (
-                  <Select value={processingPriority} onValueChange={setProcessingPriority}>
+                <Label className="text-xs font-medium">Processing Priority</Label>
+                {pricingEditable ? (
+                  <Select
+                    value={processingPriority || PROCESSING_PRIORITY_NONE}
+                    onValueChange={(v) =>
+                      setProcessingPriority(v === PROCESSING_PRIORITY_NONE ? "" : v)
+                    }
+                  >
                     <SelectTrigger className={inputPencil}>
-                      <SelectValue placeholder="Select priority" />
+                      <SelectValue placeholder="Optional" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={PROCESSING_PRIORITY_NONE}>None</SelectItem>
                       {PROCESSING_PRIORITY_OPTIONS.map((priority) => (
                         <SelectItem key={priority} value={priority}>
                           {priority}
@@ -832,59 +988,136 @@ export function GRNPage() {
             </div>
           </div>
 
-          {/* Pricing & GST (read-only) — Pencil UxqmB */}
+          {/* Pricing & GST */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold text-foreground">Pricing &amp; GST Details</h2>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+            {pricingEditable ? (
+              <p className="text-xs text-muted-foreground">
+                Rate per unit is optional. Amount (₹) is the line total before GST. GST amount and total with GST
+                follow the selected GST rate.
+              </p>
+            ) : (
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
+            )}
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
               <div className="space-y-1">
-                <Label className="text-sm font-medium">Total Amount (₹)</Label>
-                <Input
-                  readOnly
-                  value={rate ? totalAmount.toFixed(2) : "—"}
-                  className={readOnlyFieldClass}
-                />
+                <Label className="text-sm font-medium">Rate per Unit (₹)</Label>
+                {pricingEditable ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={rate}
+                    onChange={(e) => setRate(e.target.value)}
+                    placeholder="Optional"
+                    className={inputPencil}
+                  />
+                ) : (
+                  <Input readOnly value={rate.trim() !== "" ? rate : "—"} className={readOnlyFieldClass} />
+                )}
               </div>
               <div className="space-y-1">
-                <Label className="text-sm font-medium">GST Rate (%)</Label>
-                <Input readOnly value={gstPercentage ? `${gstPercentage}%` : "—"} className={readOnlyFieldClass} />
+                <Label className="text-sm font-medium">
+                  <span className="text-destructive">*</span> Amount (₹)
+                </Label>
+                {pricingEditable ? (
+                  <Input
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={amountBeforeGst}
+                    onChange={(e) => setAmountBeforeGst(e.target.value)}
+                    className={inputPencil}
+                  />
+                ) : (
+                  <Input
+                    readOnly
+                    value={amountBeforeGst.trim() !== "" ? totalAmount.toFixed(2) : "—"}
+                    className={readOnlyFieldClass}
+                  />
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label className="text-sm font-medium">
+                  <span className="text-destructive">*</span> GST Rate (%)
+                </Label>
+                {pricingEditable ? (
+                  <Select value={gstPercentage} onValueChange={setGstPercentage}>
+                    <SelectTrigger className={inputPencil}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GST_RATE_OPTIONS.map((g) => (
+                        <SelectItem key={g} value={g}>
+                          {g}%
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input readOnly value={gstPercentage ? `${gstPercentage}%` : "—"} className={readOnlyFieldClass} />
+                )}
               </div>
               <div className="space-y-1">
                 <Label className="text-sm font-medium">GST Amount (₹)</Label>
                 <Input
                   readOnly
-                  value={rate ? gstAmount.toFixed(2) : "—"}
+                  value={amountBeforeGst.trim() !== "" ? gstAmount.toFixed(2) : "—"}
                   className={readOnlyFieldClass}
                 />
               </div>
-              <div className="space-y-1">
+              <div className="space-y-1 lg:col-span-2">
                 <Label className="text-sm font-medium">Total with GST (₹)</Label>
                 <Input
                   readOnly
-                  value={rate ? totalWithGst.toFixed(2) : "—"}
-                  className={cn(readOnlyFieldClass, rate ? "font-semibold" : "")}
+                  value={amountBeforeGst.trim() !== "" ? totalWithGst.toFixed(2) : "—"}
+                  className={cn(
+                    readOnlyFieldClass,
+                    amountBeforeGst.trim() !== "" ? "font-semibold" : ""
+                  )}
                 />
               </div>
             </div>
           </div>
 
-          {/* Processing & storage (read-only) — Pencil XaNZK */}
+          {/* Processing & storage */}
           <div className="rounded-[10px] border border-border bg-card p-5 md:p-6 space-y-4 shadow-sm">
             <h2 className="text-lg font-semibold text-foreground">Processing &amp; Storage Details</h2>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
+            {!pricingEditable ? (
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Read-only</p>
+            ) : null}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">Assigned BIN ID</Label>
                 <Input readOnly value={assignedBinDisplay} className={readOnlyFieldClass} />
               </div>
               <div className="space-y-1">
-                <Label className="text-sm font-medium">BIN Description</Label>
-                <Input readOnly value={binDescriptionDisplay} className={readOnlyFieldClass} />
+                <Label className="text-sm font-medium">Storage Bin Description</Label>
+                {pricingEditable ? (
+                  <Input
+                    value={binDescription}
+                    onChange={(e) => setBinDescription(e.target.value)}
+                    placeholder="Optional"
+                    className={inputPencil}
+                  />
+                ) : (
+                  <Input readOnly value={binDescriptionDisplay} className={readOnlyFieldClass} />
+                )}
               </div>
             </div>
             <div className="space-y-1">
               <Label className="text-sm font-medium">Remarks</Label>
-              <Textarea readOnly value={remarksStorageDisplay} rows={4} className={readOnlyTextareaClass} />
+              {pricingEditable ? (
+                <Textarea
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  rows={4}
+                  placeholder="Optional"
+                  className="min-h-[88px] w-full resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm"
+                />
+              ) : (
+                <Textarea readOnly value={remarksStorageDisplay} rows={4} className={readOnlyTextareaClass} />
+              )}
             </div>
           </div>
 
@@ -1211,51 +1444,109 @@ export function GRNPage() {
                 className="pl-9"
               />
             </div>
-            <div className="rounded-md border">
+            <div className="rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>GRN Number</TableHead>
                     <TableHead>Sales Order No</TableHead>
+                    <TableHead>Order Date</TableHead>
                     <TableHead>Date of Receipt</TableHead>
                     <TableHead>Customer Name</TableHead>
                     <TableHead>Product Category</TableHead>
+                    <TableHead>Product Subcategory</TableHead>
+                    <TableHead>Measurement Type</TableHead>
+                    <TableHead>Sticker Range (Mapped)</TableHead>
                     <TableHead>Received Quantity</TableHead>
                     <TableHead>Received By</TableHead>
+                    <TableHead className="text-right">Amount (₹)</TableHead>
+                    <TableHead className="text-right">GST %</TableHead>
+                    <TableHead className="text-right">Total with GST (₹)</TableHead>
+                    <TableHead>Processing Priority</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredGrns.map((g) => (
-                    <TableRow key={g.grn_id}>
-                      <TableCell className="font-medium">{g.grn_number ?? g.grn_id}</TableCell>
-                      <TableCell>{g.sales_order_number ?? "—"}</TableCell>
-                      <TableCell>{g.received_date?.slice(0, 10) ?? "—"}</TableCell>
-                      <TableCell>{g.customer_name ?? "—"}</TableCell>
-                      <TableCell>{g.category_name ?? "—"}</TableCell>
-                      <TableCell>
-                        {g.received_quantity ?? "—"}
-                        {g.unit ? ` ${g.unit}` : ""}
-                      </TableCell>
-                      <TableCell>{g.received_by?.trim() ? g.received_by : "—"}</TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" title="View" onClick={() => openView(g)}>
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(g)}>
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" title="Print Sticker" onClick={() => setPrintStickerId(g.grn_id)}>
-                          <Printer className="h-4 w-4" />
-                        </Button>
-                        {g.status === "Pending" && (
-                          <Button variant="ghost" size="sm" title="Send for Processing" onClick={() => handleSendForProcessing(g.grn_id)}>
-                            <Send className="h-4 w-4" />
+                  {filteredGrns.map((g) => {
+                    const so = g.sales_order_id ? data.getSalesOrder(g.sales_order_id) : undefined
+                    const orderDate = so?.order_date?.slice(0, 10) ?? "—"
+                    const mtRaw = so?.measurement_type ?? ""
+                    const mtLabel =
+                      (mtRaw && (MEASUREMENT_TYPE_LABELS[mtRaw] ?? mtRaw)) || "—"
+                    const sticker =
+                      so?.sticker_range_start != null && so?.sticker_range_end != null
+                        ? `${so.sticker_range_start} to ${so.sticker_range_end}`
+                        : "—"
+                    const subcat = g.product_name ?? so?.product_name ?? "—"
+                    const amt =
+                      g.pricing != null && String(g.pricing).trim() !== ""
+                        ? Number(g.pricing).toLocaleString("en-IN")
+                        : "—"
+                    const gstPct =
+                      g.gst_percentage != null && String(g.gst_percentage).trim() !== ""
+                        ? `${g.gst_percentage}%`
+                        : "—"
+                    const totalGst =
+                      g.total_amount != null && String(g.total_amount).trim() !== ""
+                        ? Number(g.total_amount).toLocaleString("en-IN")
+                        : "—"
+                    return (
+                      <TableRow key={g.grn_id}>
+                        <TableCell className="font-medium whitespace-nowrap">
+                          {g.grn_number ?? g.grn_id}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">{g.sales_order_number ?? "—"}</TableCell>
+                        <TableCell className="whitespace-nowrap">{orderDate}</TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {g.received_date?.slice(0, 10) ?? "—"}
+                        </TableCell>
+                        <TableCell>{g.customer_name ?? "—"}</TableCell>
+                        <TableCell>{g.category_name ?? "—"}</TableCell>
+                        <TableCell className="max-w-[160px] truncate" title={subcat}>
+                          {subcat}
+                        </TableCell>
+                        <TableCell>{mtLabel}</TableCell>
+                        <TableCell className="max-w-[140px] truncate" title={sticker}>
+                          {sticker}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {g.received_quantity ?? "—"}
+                          {g.unit ? ` ${g.unit}` : ""}
+                        </TableCell>
+                        <TableCell>{g.received_by?.trim() ? g.received_by : "—"}</TableCell>
+                        <TableCell className="text-right tabular-nums">{amt}</TableCell>
+                        <TableCell className="text-right">{gstPct}</TableCell>
+                        <TableCell className="text-right tabular-nums font-medium">{totalGst}</TableCell>
+                        <TableCell>{g.processing_priority?.trim() ? g.processing_priority : "—"}</TableCell>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <Button variant="ghost" size="sm" title="View" onClick={() => openView(g)}>
+                            <Eye className="h-4 w-4" />
                           </Button>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                          <Button variant="ghost" size="sm" title="Edit" onClick={() => openEdit(g)}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            title="Print Sticker"
+                            onClick={() => setPrintStickerId(g.grn_id)}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
+                          {g.status === "Pending" && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              title="Send for Processing"
+                              onClick={() => handleSendForProcessing(g.grn_id)}
+                            >
+                              <Send className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
                 </TableBody>
               </Table>
             </div>

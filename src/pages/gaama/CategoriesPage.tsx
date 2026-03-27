@@ -132,6 +132,10 @@ export function CategoriesPage() {
       toast.error("Dose (kGy) is required and must be a valid number.")
       return
     }
+    if (!formStatus.trim() || !STATUS_OPTIONS.includes(formStatus as (typeof STATUS_OPTIONS)[number])) {
+      toast.error("Status is required.")
+      return
+    }
     const now = new Date().toISOString()
     const subcategoriesTyped: SubCategory[] = subcategories.map((s) => ({
       id: s.id,
@@ -262,10 +266,10 @@ export function CategoriesPage() {
                       </InputGroup>
                     </div>
                     <div className="space-y-2">
-                      <Label>Status</Label>
+                      <Label htmlFor="category-status">Status *</Label>
                       <Select value={formStatus} onValueChange={setFormStatus}>
-                        <SelectTrigger disabled={isView}>
-                          <SelectValue />
+                        <SelectTrigger id="category-status" disabled={isView}>
+                          <SelectValue placeholder="Select status" />
                         </SelectTrigger>
                         <SelectContent>
                           {STATUS_OPTIONS.map((s) => (

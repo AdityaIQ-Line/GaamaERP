@@ -122,8 +122,16 @@ export function RatesPage() {
       toast.error("Select a customer for a customer-specific rate, or turn off Customer-specific rate.")
       return
     }
-
-    const effectiveFromIso = new Date(formEffectiveFrom).toISOString()
+    if (!formEffectiveFrom.trim()) {
+      toast.error("Effective Date is required.")
+      return
+    }
+    const effectiveFromMs = Date.parse(formEffectiveFrom)
+    if (Number.isNaN(effectiveFromMs)) {
+      toast.error("Effective Date must be a valid date.")
+      return
+    }
+    const effectiveFromIso = new Date(effectiveFromMs).toISOString()
     const effectiveToIso = formEffectiveTo
       ? new Date(formEffectiveTo).toISOString()
       : undefined
@@ -350,12 +358,16 @@ export function RatesPage() {
         </div>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
-            <Label>Effective Date</Label>
+            <Label htmlFor="rate-effective-from">
+              Effective Date <span className="text-destructive">*</span>
+            </Label>
             <Input
+              id="rate-effective-from"
               type="date"
               value={formEffectiveFrom}
               onChange={(e) => setFormEffectiveFrom(e.target.value)}
               disabled={validityFrozen}
+              required={!validityFrozen}
               className={dateInputClass}
             />
           </div>

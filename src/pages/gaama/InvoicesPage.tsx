@@ -28,10 +28,12 @@ import {
   EmptyDescription,
 } from "@/components/ui/empty"
 import { useData, canAccess } from "@/context/DataContext"
-import type { Invoice, Challan } from "@/lib/gaama-types"
+import type { Invoice, Challan, GRN } from "@/lib/gaama-types"
 import { Receipt, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
@@ -39,6 +41,47 @@ import { latestOfDates, sortLatestFirst } from "@/lib/utils"
 
 type Tab = "pending" | "invoices"
 type ModalMode = "create" | "edit" | "view" | null
+
+const DISPATCH_THROUGH_OPTIONS = ["Vehicle", "By Person", "By Post"] as const
+
+function parseGrnQty(s: string | undefined): number {
+  return parseFloat(String(s ?? "").replace(/,/g, "")) || 0
+}
+
+function grnLineAmountBeforeGst(g: GRN): number {
+  const qty = parseGrnQty(g.received_quantity)
+  const rate = parseFloat(g.rate ?? "0") || 0
+  if (rate > 0 && qty > 0) return rate * qty
+  const total = parseFloat(g.total_amount ?? g.pricing ?? "0") || 0
+  const gstPct = parseFloat(g.gst_percentage ?? "0") || 0
+  if (total > 0 && gstPct >= 0) return total / (1 + gstPct / 100)
+  return total
+}
+
+function formatInr(n: number): string {
+  return `₹${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+function nextInvoiceNumberPreview(invoices: Invoice[]): string {
+  const year = new Date().getFullYear()
+  const sameYear = invoices.filter((x) =>
+    (x.invoice_date ?? x.created_at ?? "").toString().startsWith(String(year))
+  ).length
+  return `INV-${year}-${String(sameYear + 1).padStart(3, "0")}`
+}
+
+function grnIdsFromChallan(challan: Challan, grns: GRN[]): string[] {
+  const refs = (challan.grn_numbers ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  const ids: string[] = []
+  for (const ref of refs) {
+    const g = grns.find((x) => (x.grn_number ?? x.grn_id) === ref)
+    if (g) ids.push(g.grn_id)
+  }
+  return ids
+}
 
 function exportInvoicesToCsv(rows: Array<Record<string, string | number>>, filename: string) {
   if (rows.length === 0) return
@@ -60,8 +103,11 @@ export function InvoicesPage() {
   const [searchTerm, setSearchTerm] = React.useState("")
 
   const [createChallanId, setCreateChallanId] = React.useState("")
-  const [createAmount, setCreateAmount] = React.useState("")
-  const [createGstPct, setCreateGstPct] = React.useState("18")
+  const [createFinalDispatchQty, setCreateFinalDispatchQty] = React.useState<Record<string, string>>({})
+  const [createPartialDispatch, setCreatePartialDispatch] = React.useState<Record<string, boolean>>({})
+  const [createDeliveryNoteDate, setCreateDeliveryNoteDate] = React.useState("")
+  const [createDispatchedThrough, setCreateDispatchedThrough] = React.useState("Vehicle")
+  const [createIncludeGstInTotal, setCreateIncludeGstInTotal] = React.useState(true)
   const [createDiscount, setCreateDiscount] = React.useState("0")
   const [createHandlingCharge, setCreateHandlingCharge] = React.useState("0")
   const [createTransportationCharge, setCreateTransportationCharge] = React.useState("0")
@@ -108,14 +154,25 @@ export function InvoicesPage() {
 
   const openCreateFromChallan = (challan: Challan) => {
     const soId = challan.sales_order_id
-    const so = data.getSalesOrder(soId)
-    const rate = so?.category_id ? data.getRatesByCategory(so.category_id)[0] : undefined
-    const base = parseFloat(challan.total_amount ?? "0") || (rate?.rate_value ?? 0) * (parseFloat(challan.quantity ?? "0") || 0)
-    const gstPct = parseFloat(challan.gst_percentage ?? "18")
-    const tax = (base * gstPct) / 100
+    const grnIds = grnIdsFromChallan(challan, data.grns)
+    const initQty: Record<string, string> = {}
+    for (let i = 0; i < grnIds.length; i++) {
+      const gid = grnIds[i]!
+      const fromItem = challan.items?.[i]?.quantity
+      const g = data.getGRN(gid)
+      initQty[gid] =
+        fromItem != null
+          ? String(fromItem)
+          : String(g?.received_quantity ?? "").trim() || "0"
+    }
     setCreateChallanId(challan.challan_id)
-    setCreateAmount(String(base))
-    setCreateGstPct(String(gstPct))
+    setCreateFinalDispatchQty(initQty)
+    setCreatePartialDispatch({})
+    setCreateDeliveryNoteDate(
+      challan.delivery_note_date?.slice(0, 10) ?? new Date().toISOString().slice(0, 10)
+    )
+    setCreateDispatchedThrough(challan.dispatched_through ?? "Vehicle")
+    setCreateIncludeGstInTotal(challan.include_gst !== false)
     setCreateDiscount("0")
     setCreateHandlingCharge("0")
     setCreateTransportationCharge("0")
@@ -125,29 +182,146 @@ export function InvoicesPage() {
     setCreateTermsOfDelivery(challan.terms_of_delivery ?? "")
     setIncludeHandlingCharge(false)
     setIncludeTransportationCharge(false)
+    const basePreview = parseFloat(challan.base_amount ?? "0") || 0
+    const gstPctPreview = parseFloat(challan.gst_percentage ?? "18") || 0
+    const taxPreview = (basePreview * gstPctPreview) / 100
     setForm({
       sales_order_id: soId,
       invoice_date: new Date().toISOString().slice(0, 10),
-      amount: base,
-      tax,
-      grand_total: base + tax,
+      amount: basePreview,
+      tax: taxPreview,
+      grand_total: basePreview + taxPreview,
       payment_status: "pending",
     })
     setMode("create")
   }
 
+  const selectedCreateChallan = createChallanId ? data.getChallan(createChallanId) : undefined
+  const createGrnIdList = React.useMemo(() => {
+    if (!selectedCreateChallan) return [] as string[]
+    return grnIdsFromChallan(selectedCreateChallan, data.grns)
+  }, [selectedCreateChallan, data.grns])
+
+  const invoiceFromGrnTotals = React.useMemo(() => {
+    let computedBase = 0
+    let gstPctStr = ""
+    for (const id of createGrnIdList) {
+      const g = data.grns.find((x) => x.grn_id === id)
+      if (!g) continue
+      const recv = parseGrnQty(g.received_quantity)
+      const finalQ = parseGrnQty(createFinalDispatchQty[id] ?? g.received_quantity)
+      if (recv <= 0) continue
+      computedBase += grnLineAmountBeforeGst(g) * (finalQ / recv)
+      const gGst = g.gst_percentage
+      if (gGst != null && String(gGst).trim() !== "") gstPctStr = String(gGst)
+    }
+    if (createGrnIdList.length === 0 && selectedCreateChallan) {
+      return {
+        computedBase: parseFloat(selectedCreateChallan.base_amount ?? "0") || 0,
+        gstPctStr: String(selectedCreateChallan.gst_percentage ?? "18"),
+      }
+    }
+    return {
+      computedBase,
+      gstPctStr: gstPctStr || String(selectedCreateChallan?.gst_percentage ?? "18"),
+    }
+  }, [createGrnIdList, createFinalDispatchQty, data.grns, selectedCreateChallan])
+
+  const selectedCreateCustomer =
+    selectedCreateChallan?.customer_id
+      ? data.getCustomer(selectedCreateChallan.customer_id)
+      : form.sales_order_id
+        ? data.getCustomer(data.getSalesOrder(form.sales_order_id)?.customer_id ?? "")
+        : undefined
+  const customerTermsOfDelivery = selectedCreateCustomer?.terms_of_delivery?.trim() ?? ""
+
+  React.useEffect(() => {
+    if (mode !== "create") return
+    if (!customerTermsOfDelivery) return
+    setCreateTermsOfDelivery((prev) => (prev.trim().length > 0 ? prev : customerTermsOfDelivery))
+  }, [mode, customerTermsOfDelivery])
+
+  const createShippingOptions =
+    selectedCreateCustomer?.shipping_addresses_typed?.length
+      ? selectedCreateCustomer.shipping_addresses_typed.map((a) => a.address)
+      : selectedCreateCustomer?.billing_address
+        ? [selectedCreateCustomer.billing_address]
+        : []
+
+  const handleAddShippingAddress = () => {
+    if (!selectedCreateCustomer) {
+      toast.error("Customer not found for this challan.")
+      return
+    }
+    const entered = window.prompt("Enter new shipping address")
+    const addr = entered?.trim()
+    if (!addr) return
+    const existing = selectedCreateCustomer.shipping_addresses_typed ?? []
+    if (existing.some((a) => a.address.trim().toLowerCase() === addr.toLowerCase())) {
+      setCreateShippingAddress(addr)
+      toast.message("Address already exists for this customer.")
+      return
+    }
+    data.updateCustomer(selectedCreateCustomer.customer_id, {
+      shipping_addresses_typed: [
+        ...existing,
+        {
+          id: `ship_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          address: addr,
+          is_default: existing.length === 0,
+        },
+      ],
+    })
+    setCreateShippingAddress(addr)
+    toast.success("Shipping address added.")
+  }
+
   const handleCreateSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    const base = parseFloat(createAmount) || 0
-    const gstPct = parseFloat(createGstPct) || 0
+    const challan = data.getChallan(createChallanId)
+    const so = data.getSalesOrder(form.sales_order_id)
+    const grnList = createGrnIdList.map((id) => data.getGRN(id)).filter(Boolean) as GRN[]
+
+    if (grnList.length === 0) {
+      toast.error("No GRNs linked to this challan. Cannot create invoice.")
+      return
+    }
+    for (const g of grnList) {
+      const recv = parseGrnQty(g.received_quantity)
+      const finalQ = parseGrnQty(createFinalDispatchQty[g.grn_id] ?? g.received_quantity)
+      if (finalQ <= 0) {
+        toast.error(`Final dispatch quantity must be greater than 0 for ${g.grn_number ?? g.grn_id}.`)
+        return
+      }
+      if (finalQ > recv) {
+        toast.error(`Final dispatch cannot exceed received quantity for ${g.grn_number ?? g.grn_id}.`)
+        return
+      }
+    }
+    if (!so?.order_date?.trim()) {
+      toast.error("Customer Order Date is required from Sales Order.")
+      return
+    }
+    if (
+      !DISPATCH_THROUGH_OPTIONS.includes(createDispatchedThrough as (typeof DISPATCH_THROUGH_OPTIONS)[number])
+    ) {
+      toast.error("Select Dispatch Through.")
+      return
+    }
+
+    const base = invoiceFromGrnTotals.computedBase
+    const gstPct = parseFloat(invoiceFromGrnTotals.gstPctStr) || 0
     const discount = parseFloat(createDiscount) || 0
     const handling = includeHandlingCharge ? parseFloat(createHandlingCharge) || 0 : 0
     const transportation = includeTransportationCharge ? parseFloat(createTransportationCharge) || 0 : 0
     const subTotal = Math.max(0, base - discount + handling + transportation)
     const tax = (subTotal * gstPct) / 100
-    const grandTotal = subTotal + tax
-    const challan = data.getChallan(createChallanId)
-    const so = data.getSalesOrder(form.sales_order_id)
+    const grandTotal = subTotal + (createIncludeGstInTotal ? tax : 0)
+    const totalDispatched = grnList.reduce(
+      (s, g) => s + parseGrnQty(createFinalDispatchQty[g.grn_id] ?? g.received_quantity),
+      0
+    )
+
     if (!createShippingAddress.trim()) {
       toast.error("Shipping address is required.")
       return
@@ -160,6 +334,7 @@ export function InvoicesPage() {
       toast.error("Terms of delivery is required.")
       return
     }
+
     data.addInvoice({
       sales_order_id: form.sales_order_id,
       sales_order_number: so?.sales_order_number ?? so?.order_number,
@@ -170,8 +345,8 @@ export function InvoicesPage() {
       category_name: so?.category_name,
       product_id: so?.product_id,
       product_name: so?.product_name,
-      quantity: so?.quantity,
-      unit: so?.unit,
+      quantity: String(totalDispatched),
+      unit: so?.unit ?? grnList[0]?.unit,
       invoice_date: new Date(form.invoice_date).toISOString(),
       amount: subTotal,
       tax,
@@ -180,7 +355,8 @@ export function InvoicesPage() {
       status: "Generated",
       base_amount: String(base),
       gst_percentage: String(gstPct),
-      total_amount: String(grandTotal),
+      total_gst_amount: String(tax.toFixed(2)),
+      total_amount: String(grandTotal.toFixed(2)),
       discount_amount: String(discount),
       handling_charge: String(handling),
       transportation_charge: String(transportation),
@@ -188,6 +364,12 @@ export function InvoicesPage() {
       shipping_address: createShippingAddress.trim(),
       other_reference: createOtherReference.trim() || undefined,
       terms_of_delivery: createTermsOfDelivery.trim(),
+      delivery_note_date: createDeliveryNoteDate.trim()
+        ? new Date(createDeliveryNoteDate).toISOString().slice(0, 10)
+        : undefined,
+      customer_order_date: so.order_date.slice(0, 10),
+      dispatched_through: createDispatchedThrough,
+      include_gst: createIncludeGstInTotal,
     })
     toast.success("Invoice created.")
     setMode(null)
@@ -279,8 +461,9 @@ export function InvoicesPage() {
     )
   }, [invoices, searchTerm])
 
-  const createBaseAmount = parseFloat(createAmount) || 0
-  const createGstPercentage = parseFloat(createGstPct) || 0
+  const { computedBase: invoiceGrnBase, gstPctStr: invoiceGstPctStr } = invoiceFromGrnTotals
+  const createGstPercentage = parseFloat(invoiceGstPctStr) || 0
+  const createBaseAmount = invoiceGrnBase
   const createDiscountAmount = parseFloat(createDiscount) || 0
   const createHandlingAmount = parseFloat(createHandlingCharge) || 0
   const createTransportationAmount = parseFloat(createTransportationCharge) || 0
@@ -289,84 +472,238 @@ export function InvoicesPage() {
     createBaseAmount - createDiscountAmount + createHandlingAmount + createTransportationAmount
   )
   const createTaxAmount = (createSubTotal * createGstPercentage) / 100
-  const createGrandTotal = createSubTotal + createTaxAmount
+  const createGrandTotal = createSubTotal + (createIncludeGstInTotal ? createTaxAmount : 0)
 
-  const selectedCreateChallan = createChallanId ? data.getChallan(createChallanId) : undefined
-  const selectedCreateCustomer =
-    selectedCreateChallan?.customer_id
-      ? data.getCustomer(selectedCreateChallan.customer_id)
-      : form.sales_order_id
-        ? data.getCustomer(data.getSalesOrder(form.sales_order_id)?.customer_id ?? "")
-        : undefined
-  const createShippingOptions =
-    selectedCreateCustomer?.shipping_addresses_typed?.length
-      ? selectedCreateCustomer.shipping_addresses_typed.map((a) => a.address)
-      : selectedCreateCustomer?.billing_address
-        ? [selectedCreateCustomer.billing_address]
-        : []
+  const readOnlyCreate =
+    "h-9 cursor-not-allowed rounded-md border-transparent bg-muted text-sm text-muted-foreground opacity-90"
+
+  const createSo = form.sales_order_id ? data.getSalesOrder(form.sales_order_id) : undefined
 
   const invoiceCreateForm = (
-    <div className="rounded-lg border border-border bg-card p-6">
-      <form onSubmit={handleCreateSubmit}>
-        <FormSection title="Details" noSeparator>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Sales Order</Label>
-              <Input value={form.sales_order_id} readOnly className="bg-muted" />
+    <div className="space-y-6">
+      <form onSubmit={handleCreateSubmit} className="space-y-6">
+        <div className="rounded-lg border border-border bg-card p-5 shadow-sm md:p-6">
+          <h2 className="text-lg font-semibold text-foreground">Challan &amp; sales order</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Sales Order</Label>
+              <Input readOnly value={form.sales_order_id} className={readOnlyCreate} />
             </div>
-            <div className="space-y-2">
-              <Label>Invoice Date</Label>
-              <Input type="date" value={form.invoice_date} onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))} />
-            </div>
-            <div className="space-y-2">
-              <Label>Base Amount</Label>
-              <Input type="number" value={createAmount} onChange={(e) => setCreateAmount(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>GST %</Label>
-              <Input type="number" value={createGstPct} onChange={(e) => setCreateGstPct(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Discount</Label>
-              <Input type="number" value={createDiscount} onChange={(e) => setCreateDiscount(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Handling Charge</Label>
-              <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                <Switch checked={includeHandlingCharge} onCheckedChange={(v) => setIncludeHandlingCharge(Boolean(v))} />
-                <span className="text-sm text-muted-foreground">Apply handling charge</span>
-              </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Challan Number</Label>
               <Input
-                type="number"
-                value={createHandlingCharge}
-                onChange={(e) => setCreateHandlingCharge(e.target.value)}
-                disabled={!includeHandlingCharge}
-                className={!includeHandlingCharge ? "bg-muted" : undefined}
+                readOnly
+                value={selectedCreateChallan?.challan_number ?? selectedCreateChallan?.challan_id ?? "—"}
+                className={readOnlyCreate}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Invoice Date</Label>
+              <Input
+                type="date"
+                value={form.invoice_date}
+                onChange={(e) => setForm((f) => ({ ...f, invoice_date: e.target.value }))}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5 shadow-sm md:p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-foreground">GRN lines</h2>
+          <p className="text-xs text-muted-foreground">
+            Amount, GST%, and Total Amount are read-only from each GRN. Adjust final dispatch quantity as needed.
+          </p>
+          <div className="overflow-x-auto rounded-md border border-border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="whitespace-nowrap text-xs font-medium">GRN No.</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Received Quantity</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Gross Weight (kg)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Net Weight (kg)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Amount (₹)</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">GST%</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Total Amount</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium text-destructive">
+                    * Final Dispatch Quantity
+                  </TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Dispatch Quantity</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Edit icon</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {createGrnIdList.map((id) => {
+                  const g = data.getGRN(id)
+                  if (!g) return null
+                  const recv = parseGrnQty(g.received_quantity)
+                  const finalStr = createFinalDispatchQty[id] ?? g.received_quantity ?? ""
+                  const finalQ = parseGrnQty(finalStr)
+                  const remaining = Math.max(0, recv - finalQ)
+                  const lineAmt = grnLineAmountBeforeGst(g)
+                  const totalDisplay =
+                    g.total_amount != null && g.total_amount !== ""
+                      ? formatInr(parseFloat(g.total_amount) || 0)
+                      : "—"
+                  return (
+                    <TableRow key={id}>
+                      <TableCell className="whitespace-nowrap font-medium text-primary">
+                        {g.grn_number ?? g.grn_id}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {g.received_quantity ?? "—"} {g.unit ?? ""}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{g.gross_weight ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">{g.net_weight ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap">{formatInr(lineAmt)}</TableCell>
+                      <TableCell className="whitespace-nowrap">{g.gst_percentage ?? "—"}</TableCell>
+                      <TableCell className="whitespace-nowrap font-semibold">{totalDisplay}</TableCell>
+                      <TableCell className="min-w-[140px]">
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id={`inv-final-qty-${id}`}
+                            type="number"
+                            min={0}
+                            step="any"
+                            className="h-9 rounded-md shadow-none"
+                            value={finalStr}
+                            onChange={(e) =>
+                              setCreateFinalDispatchQty((p) => ({ ...p, [id]: e.target.value }))
+                            }
+                          />
+                          <span className="shrink-0 text-xs text-muted-foreground">{g.unit ?? ""}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-emerald-600 dark:text-emerald-400">
+                        {remaining.toFixed(2)} {g.unit ?? ""}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={!!createPartialDispatch[id]}
+                            onCheckedChange={(c) =>
+                              setCreatePartialDispatch((p) => ({ ...p, [id]: !!c }))
+                            }
+                            aria-label={`Partial dispatch for ${g.grn_number ?? id}`}
+                          />
+                          <span className="text-xs text-muted-foreground">Partial Dispatch</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2"
+                            onClick={() => document.getElementById(`inv-final-qty-${id}`)?.focus()}
+                          >
+                            Edit
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border bg-card p-5 shadow-sm md:p-6 space-y-6">
+          <h2 className="text-lg font-semibold text-foreground">Invoice details</h2>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Invoice Number
+              </Label>
+              <Input readOnly value={nextInvoiceNumberPreview(invoices)} className={readOnlyCreate} />
+              <p className="text-xs text-muted-foreground">Auto-generated on save.</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Delivery Note Date</Label>
+              <Input
+                type="date"
+                value={createDeliveryNoteDate}
+                onChange={(e) => setCreateDeliveryNoteDate(e.target.value)}
+                className="h-9 rounded-md shadow-none"
               />
             </div>
             <div className="space-y-2">
-              <Label>Transportation Charge</Label>
-              <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
-                <Switch checked={includeTransportationCharge} onCheckedChange={(v) => setIncludeTransportationCharge(Boolean(v))} />
-                <span className="text-sm text-muted-foreground">Apply transportation charge</span>
-              </div>
+              <Label>
+                <span className="text-destructive">*</span> Customer Order Date
+              </Label>
+              <Input readOnly value={createSo?.order_date?.slice(0, 10) ?? ""} className={readOnlyCreate} />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Terms of Delivery
+              </Label>
               <Input
-                type="number"
-                value={createTransportationCharge}
-                onChange={(e) => setCreateTransportationCharge(e.target.value)}
-                disabled={!includeTransportationCharge}
-                className={!includeTransportationCharge ? "bg-muted" : undefined}
+                value={createTermsOfDelivery}
+                onChange={(e) => setCreateTermsOfDelivery(e.target.value)}
+                placeholder="Auto fetched from Customer Master"
+                className="h-9 rounded-md shadow-none"
               />
             </div>
             <div className="space-y-2">
-              <Label>HSN / SAC Code *</Label>
-              <Input value={createHsnSacCode} onChange={(e) => setCreateHsnSacCode(e.target.value)} />
+              <Label>
+                <span className="text-destructive">*</span> Dispatch Through
+              </Label>
+              <Select value={createDispatchedThrough} onValueChange={setCreateDispatchedThrough}>
+                <SelectTrigger className="h-9 rounded-md shadow-none">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DISPATCH_THROUGH_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt}>
+                      {opt}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
-              <Label>Shipping Address *</Label>
+              <Label>Include GST in Total Amount</Label>
+              <div className="flex h-auto min-h-9 items-center gap-3 rounded-md border border-border px-3 py-2">
+                <Checkbox
+                  checked={createIncludeGstInTotal}
+                  onCheckedChange={(v) => setCreateIncludeGstInTotal(Boolean(v))}
+                  aria-label="Include GST in total amount"
+                />
+                <span className="text-sm text-muted-foreground">
+                  {createIncludeGstInTotal ? "GST included in invoice total" : "GST excluded from invoice total"}
+                </span>
+              </div>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>Other References</Label>
+              <Textarea
+                value={createOtherReference}
+                onChange={(e) => setCreateOtherReference(e.target.value)}
+                placeholder="Optional"
+                rows={3}
+                className="min-h-[80px] resize-y rounded-md"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> HSN/SAC Code
+              </Label>
+              <Input
+                value={createHsnSacCode}
+                onChange={(e) => setCreateHsnSacCode(e.target.value)}
+                className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>
+                  <span className="text-destructive">*</span> Shipping Address
+                </Label>
+                <Button type="button" variant="outline" size="sm" onClick={handleAddShippingAddress}>
+                  Add New
+                </Button>
+              </div>
               {createShippingOptions.length > 0 ? (
                 <Select value={createShippingAddress} onValueChange={setCreateShippingAddress}>
-                  <SelectTrigger>
+                  <SelectTrigger className="h-9 rounded-md shadow-none">
                     <SelectValue placeholder="Select shipping address" />
                   </SelectTrigger>
                   <SelectContent>
@@ -378,38 +715,102 @@ export function InvoicesPage() {
                   </SelectContent>
                 </Select>
               ) : null}
-              <Input
+              <Textarea
                 value={createShippingAddress}
                 onChange={(e) => setCreateShippingAddress(e.target.value)}
-                placeholder="Enter shipping address"
+                placeholder="Shipping address"
+                rows={2}
+                className="rounded-md"
               />
             </div>
-            <div className="space-y-2">
-              <Label>Other Reference</Label>
-              <Input value={createOtherReference} onChange={(e) => setCreateOtherReference(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Terms of Delivery *</Label>
-              <Input value={createTermsOfDelivery} onChange={(e) => setCreateTermsOfDelivery(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label>Tax</Label>
-              <Input value={createTaxAmount} readOnly className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>Grand Total</Label>
-              <Input value={createGrandTotal} readOnly className="bg-muted" />
-            </div>
           </div>
-        </FormSection>
-        <div className="flex justify-end gap-2 border-t pt-4">
-          <Button type="button" variant="outline" onClick={() => {
-            if (!window.confirm("Discard changes?")) return
-            setMode(null)
-          }}>
-            Cancel
-          </Button>
-          <Button type="submit">Create Invoice</Button>
+
+          <FormSection title="Optional pricing adjustments" noSeparator>
+            <div className="grid gap-4 py-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Amount (₹) from GRNs</Label>
+                <Input readOnly value={createBaseAmount.toFixed(2)} className={readOnlyCreate} />
+              </div>
+              <div className="space-y-2">
+                <Label>GST%</Label>
+                <Input readOnly value={invoiceGstPctStr} className={readOnlyCreate} />
+              </div>
+              <div className="space-y-2">
+                <Label>Discount</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={createDiscount}
+                  onChange={(e) => setCreateDiscount(e.target.value)}
+                  className="h-9 rounded-md shadow-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Handling Charge</Label>
+                <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
+                  <Switch
+                    checked={includeHandlingCharge}
+                    onCheckedChange={(v) => setIncludeHandlingCharge(Boolean(v))}
+                  />
+                  <span className="text-sm text-muted-foreground">Apply</span>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={createHandlingCharge}
+                  onChange={(e) => setCreateHandlingCharge(e.target.value)}
+                  disabled={!includeHandlingCharge}
+                  className={!includeHandlingCharge ? "bg-muted" : "h-9 rounded-md shadow-none"}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Transportation Charge</Label>
+                <div className="flex items-center gap-3 rounded-md border border-border px-3 py-2">
+                  <Switch
+                    checked={includeTransportationCharge}
+                    onCheckedChange={(v) => setIncludeTransportationCharge(Boolean(v))}
+                  />
+                  <span className="text-sm text-muted-foreground">Apply</span>
+                </div>
+                <Input
+                  type="number"
+                  min={0}
+                  step="any"
+                  value={createTransportationCharge}
+                  onChange={(e) => setCreateTransportationCharge(e.target.value)}
+                  disabled={!includeTransportationCharge}
+                  className={!includeTransportationCharge ? "bg-muted" : "h-9 rounded-md shadow-none"}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Tax (GST)</Label>
+                <Input readOnly value={createTaxAmount.toFixed(2)} className={readOnlyCreate} />
+              </div>
+              <div className="space-y-2">
+                <Label>Total Amount</Label>
+                <Input readOnly value={createGrandTotal.toFixed(2)} className={readOnlyCreate} />
+              </div>
+            </div>
+          </FormSection>
+
+          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-md shadow-none"
+              onClick={() => {
+                if (!window.confirm("Discard changes?")) return
+                setMode(null)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" className="h-9 rounded-md px-8 shadow-none">
+              Create Invoice
+            </Button>
+          </div>
         </div>
       </form>
     </div>

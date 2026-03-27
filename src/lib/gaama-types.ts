@@ -365,6 +365,12 @@ export interface Invoice {
   terms_of_delivery?: string
   hsn_sac_code?: string
   other_reference?: string
+  /** Optional; aligned with challan / dispatch workflow */
+  delivery_note_date?: string
+  customer_order_date?: string
+  dispatched_through?: string
+  /** When false, tax is computed but not added to grand_total (GST shown on document only). */
+  include_gst?: boolean
   order_basis?: string
   measurement_type?: string
   customer_gstin?: string

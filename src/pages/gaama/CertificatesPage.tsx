@@ -68,11 +68,17 @@ export function CertificatesPage() {
   const [certJw, setCertJw] = React.useState("")
   const [certSoDate, setCertSoDate] = React.useState("")
   const [certTotalBoxes, setCertTotalBoxes] = React.useState("")
+  const [certStandardUnits, setCertStandardUnits] = React.useState("")
   const [certTotalNetWeight, setCertTotalNetWeight] = React.useState("")
   const [certTotalGrossWeight, setCertTotalGrossWeight] = React.useState("")
+  const [certUnitSerialNumber, setCertUnitSerialNumber] = React.useState("")
   const [certUnitSerialFrom, setCertUnitSerialFrom] = React.useState("")
   const [certUnitSerialTo, setCertUnitSerialTo] = React.useState("")
   const [certDosimeterBatch, setCertDosimeterBatch] = React.useState("")
+  const [certCustomerInvNo, setCertCustomerInvNo] = React.useState("")
+  const [certCustomerInvDate, setCertCustomerInvDate] = React.useState("")
+  const [certChallanCreatedDate, setCertChallanCreatedDate] = React.useState("")
+  const [certCustomerAddress, setCertCustomerAddress] = React.useState("")
 
   const allowed = canAccess(data.currentRole, "certificates")
   const certificates = data.certificates
@@ -108,6 +114,18 @@ export function CertificatesPage() {
 
   const openGenerate = (grn: GRN) => {
     setCreateFromGrnId(grn.grn_id)
+    const so = data.getSalesOrder(grn.sales_order_id ?? "")
+    const customer = grn.customer_id ? data.getCustomer(grn.customer_id) : undefined
+    const linkedChallan = data.challans.find((c) =>
+      (c.grn_numbers ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .includes(grn.grn_number ?? grn.grn_id)
+    )
+    const stickerStart = so?.sticker_range_start != null ? String(so.sticker_range_start) : ""
+    const stickerEnd = so?.sticker_range_end != null ? String(so.sticker_range_end) : ""
+    const unitSerial = stickerStart && stickerEnd ? `${stickerStart}-${stickerEnd}` : stickerStart || stickerEnd
     const cat = grn.category_id ? data.getCategory(grn.category_id) : undefined
     setCertProductRows([
       { sr_no: 1, description: grn.product_name ?? grn.category_name ?? "", quantity: grn.received_quantity ?? "", batch: "" },
@@ -120,16 +138,22 @@ export function CertificatesPage() {
     setCertAvgDose(cat?.dose_count != null ? String(cat.dose_count) : "")
     setCertDaeLicense("")
     setCertAerbLicense("")
-    setCertCrn("")
-    setCertInw("")
-    setCertJw("")
-    setCertSoDate("")
-    setCertTotalBoxes("")
+    setCertCrn(customer?.customer_code ?? "")
+    setCertInw(so?.sales_order_number ?? so?.order_number ?? "")
+    setCertJw(linkedChallan?.challan_number ?? linkedChallan?.challan_id ?? "")
+    setCertSoDate(so?.order_date?.slice(0, 10) ?? "")
+    setCertTotalBoxes(String(so?.quantity ?? grn.received_quantity ?? ""))
+    setCertStandardUnits(String(so?.quantity ?? grn.received_quantity ?? ""))
     setCertTotalNetWeight("")
     setCertTotalGrossWeight("")
-    setCertUnitSerialFrom("")
-    setCertUnitSerialTo("")
+    setCertUnitSerialNumber(unitSerial)
+    setCertUnitSerialFrom(stickerStart)
+    setCertUnitSerialTo(stickerEnd)
     setCertDosimeterBatch("")
+    setCertCustomerInvNo("")
+    setCertCustomerInvDate(new Date().toISOString().slice(0, 10))
+    setCertChallanCreatedDate((linkedChallan?.created_at ?? linkedChallan?.dispatch_date ?? "").slice(0, 10))
+    setCertCustomerAddress(customer?.billing_address ?? "")
     setMode("create")
   }
 
@@ -172,6 +196,22 @@ export function CertificatesPage() {
       toast.error("Dosimeter batch is required.")
       return
     }
+    if (!certCrn.trim() || !certInw.trim() || !certJw.trim()) {
+      toast.error("CRN, INW, and JW are required.")
+      return
+    }
+    if (!certCustomerInvNo.trim() || !certCustomerInvDate.trim()) {
+      toast.error("Customer INV No. and Date are required.")
+      return
+    }
+    if (!certCustomerAddress.trim()) {
+      toast.error("Customer Address is required.")
+      return
+    }
+    if (!certTotalBoxes.trim() || !certStandardUnits.trim() || !certUnitSerialNumber.trim()) {
+      toast.error("Total Boxes/Bag, Number of Standard Units, and Unit Serial Number are required.")
+      return
+    }
     if (
       certProductRows.length === 0 ||
       certProductRows.some((row) => !row.description.trim() || !row.quantity.trim())
@@ -207,8 +247,12 @@ export function CertificatesPage() {
       jw: certJw || undefined,
       so_date: certSoDate || undefined,
       total_boxes: certTotalBoxes || undefined,
+      number_of_standard_units: certStandardUnits || undefined,
       total_net_weight: certTotalNetWeight || undefined,
       total_gross_weight: certTotalGrossWeight || undefined,
+      customer_inv_no: certCustomerInvNo || undefined,
+      invoice_date: certCustomerInvDate || undefined,
+      customer_address: certCustomerAddress || undefined,
       unit_serial_from: certUnitSerialFrom || undefined,
       unit_serial_to: certUnitSerialTo || undefined,
       dosimeter_batch: certDosimeterBatch || undefined,
@@ -271,7 +315,47 @@ export function CertificatesPage() {
   const certificateCreateForm = (
     <div className="rounded-lg border border-border bg-card p-6 max-w-4xl">
       <form onSubmit={handleGenerateSubmit}>
-        <FormSection title="Subcategory Rows" noSeparator>
+        <FormSection title="Certificate Header" noSeparator>
+          <div className="grid grid-cols-1 gap-4 py-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="space-y-2">
+              <Label>Certificate No. *</Label>
+              <Input readOnly value={`CERT-${new Date().getFullYear()}-${String(certificates.length + 1).padStart(3, "0")}`} className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>CRN *</Label>
+              <Input value={certCrn} onChange={(e) => setCertCrn(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>INW *</Label>
+              <Input readOnly value={certInw} className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>JW *</Label>
+              <Input readOnly value={certJw} className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Date (Challan Created) *</Label>
+              <Input readOnly value={certChallanCreatedDate} className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer Name *</Label>
+              <Input readOnly value={data.getGRN(createFromGrnId)?.customer_name ?? ""} className="bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <Label>Customer INV No. *</Label>
+              <Input value={certCustomerInvNo} onChange={(e) => setCertCustomerInvNo(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Date *</Label>
+              <Input type="date" value={certCustomerInvDate} onChange={(e) => setCertCustomerInvDate(e.target.value)} />
+            </div>
+            <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+              <Label>Customer Address *</Label>
+              <Input value={certCustomerAddress} onChange={(e) => setCertCustomerAddress(e.target.value)} />
+            </div>
+          </div>
+        </FormSection>
+        <FormSection title="Product Rows" noSeparator>
           <div className="space-y-4 py-4">
             {certProductRows.map((row, idx) => (
               <div key={idx} className="grid grid-cols-4 gap-2">
@@ -300,7 +384,7 @@ export function CertificatesPage() {
             ))}
             <Button type="button" variant="outline" size="sm" onClick={addProductRow}>
               <Plus className="h-4 w-4 mr-2" />
-              Add sub category row
+              Add product row
             </Button>
           </div>
         </FormSection>
@@ -309,6 +393,22 @@ export function CertificatesPage() {
             <div className="space-y-2">
               <Label>Batch / Lot No.</Label>
               <Input value={certBatchLot} onChange={(e) => setCertBatchLot(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Product Description *</Label>
+              <Input
+                readOnly
+                value={certProductRows.map((r) => r.description).filter(Boolean).join(", ")}
+                className="bg-muted"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Quantity *</Label>
+              <Input
+                readOnly
+                value={certProductRows.map((r) => r.quantity).filter(Boolean).join(", ")}
+                className="bg-muted"
+              />
             </div>
             <div className="space-y-2">
               <Label>Sticker range (Start)</Label>
@@ -367,8 +467,12 @@ export function CertificatesPage() {
         <FormSection title="Weights & Serial" noSeparator>
           <div className="grid grid-cols-2 gap-4 py-4">
             <div className="space-y-2">
-              <Label>Total Boxes</Label>
-              <Input value={certTotalBoxes} onChange={(e) => setCertTotalBoxes(e.target.value)} placeholder="Total boxes" />
+              <Label>Total Boxes/Bag *</Label>
+              <Input value={certTotalBoxes} onChange={(e) => setCertTotalBoxes(e.target.value)} placeholder="Fetched from Sales Order" />
+            </div>
+            <div className="space-y-2">
+              <Label>Number of Standard Units *</Label>
+              <Input value={certStandardUnits} onChange={(e) => setCertStandardUnits(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Total Net Weight</Label>
@@ -379,12 +483,8 @@ export function CertificatesPage() {
               <Input value={certTotalGrossWeight} onChange={(e) => setCertTotalGrossWeight(e.target.value)} placeholder="Gross weight" />
             </div>
             <div className="space-y-2">
-              <Label>Unit Serial From</Label>
-              <Input value={certUnitSerialFrom} onChange={(e) => setCertUnitSerialFrom(e.target.value)} placeholder="From" />
-            </div>
-            <div className="space-y-2">
-              <Label>Unit Serial To</Label>
-              <Input value={certUnitSerialTo} onChange={(e) => setCertUnitSerialTo(e.target.value)} placeholder="To" />
+              <Label>Unit Serial Number *</Label>
+              <Input readOnly value={certUnitSerialNumber} className="bg-muted" />
             </div>
           </div>
         </FormSection>

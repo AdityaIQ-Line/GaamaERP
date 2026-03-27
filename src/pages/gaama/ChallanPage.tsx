@@ -32,6 +32,7 @@ import type { Challan, ChallanItem, GRN } from "@/lib/gaama-types"
 import { FileText, Search, Printer, Download, Eye, Pencil } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
 import { toast } from "sonner"
 import { PageHeaderWithBack } from "@/components/patterns/page-header-with-back"
 import { PageHeaderWithTabs } from "@/components/patterns/page-header-with-tabs"
@@ -247,6 +248,7 @@ export function ChallanPage() {
 
   const firstGrn = selectedGrnList.length > 0 ? data.getGRN(selectedGrnList[0]) : undefined
   const customerForAddress = firstGrn?.customer_id ? data.getCustomer(firstGrn.customer_id) : undefined
+  const customerTermsOfDelivery = customerForAddress?.terms_of_delivery?.trim() ?? ""
   const shippingOptions = customerForAddress?.shipping_addresses_typed?.length
     ? customerForAddress.shipping_addresses_typed.map((a) => a.address)
     : customerForAddress?.billing_address
@@ -287,10 +289,6 @@ export function ChallanPage() {
       toast.error("Select at least one GRN.")
       return
     }
-    if (!createDeliveryNoteDate.trim()) {
-      toast.error("Delivery Note Date is required.")
-      return
-    }
     if (!createTermsOfDelivery.trim()) {
       toast.error("Terms of Delivery is required.")
       return
@@ -322,6 +320,10 @@ export function ChallanPage() {
     }
     const soId = grnList[0]?.sales_order_id ?? ""
     const so = data.getSalesOrder(soId)
+    if (!so?.order_date?.trim()) {
+      toast.error("Customer Order Date is required and must come from Sales Order.")
+      return
+    }
     const items: ChallanItem[] = grnList.map((g) => ({
       item_id: `ci_${g.grn_id}`,
       category_id: g.category_id ?? "",
@@ -373,6 +375,12 @@ export function ChallanPage() {
   }
 
   const [printAfterViewOpen, setPrintAfterViewOpen] = React.useState(false)
+
+  React.useEffect(() => {
+    if (mode !== "create") return
+    if (customerTermsOfDelivery.length === 0) return
+    setCreateTermsOfDelivery((prev) => (prev.trim().length > 0 ? prev : customerTermsOfDelivery))
+  }, [mode, customerTermsOfDelivery])
 
   const closeChallanDetail = React.useCallback(() => {
     setMode(null)
@@ -748,7 +756,7 @@ export function ChallanPage() {
                   </TableHead>
                   <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Dispatch Quantity</TableHead>
                   <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Pricing (₹)</TableHead>
-                  <TableHead className="whitespace-nowrap text-xs font-medium">Partial Dispatch</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Edit icon</TableHead>
                   <TableHead className="whitespace-nowrap text-xs font-medium text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -803,13 +811,16 @@ export function ChallanPage() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{formatInr(remainingPrice)}</TableCell>
                       <TableCell>
-                        <Switch
-                          checked={!!createPartialDispatch[id]}
-                          onCheckedChange={(c) =>
-                            setCreatePartialDispatch((p) => ({ ...p, [id]: !!c }))
-                          }
-                          aria-label={`Partial dispatch for ${g.grn_number ?? id}`}
-                        />
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={!!createPartialDispatch[id]}
+                            onCheckedChange={(c) =>
+                              setCreatePartialDispatch((p) => ({ ...p, [id]: !!c }))
+                            }
+                            aria-label={`Partial dispatch for ${g.grn_number ?? id}`}
+                          />
+                          <span className="text-xs text-muted-foreground">Partial Dispatch</span>
+                        </div>
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         <Button
@@ -901,14 +912,23 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Delivery Note Date
+                Delivery Note Date
               </Label>
               <Input
                 type="date"
-                required
                 value={createDeliveryNoteDate}
                 onChange={(e) => setCreateDeliveryNoteDate(e.target.value)}
                 className="h-9 rounded-md shadow-none"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>
+                <span className="text-destructive">*</span> Customer Order Date
+              </Label>
+              <Input
+                readOnly
+                value={summarySo?.order_date?.slice(0, 10) ?? ""}
+                className={readOnlyMuted}
               />
             </div>
             <div className="space-y-2">
@@ -918,7 +938,7 @@ export function ChallanPage() {
               <Input
                 value={createTermsOfDelivery}
                 onChange={(e) => setCreateTermsOfDelivery(e.target.value)}
-                placeholder="e.g. Advance"
+                placeholder="Auto fetched from Customer Master"
                 className="h-9 rounded-md shadow-none"
               />
             </div>

@@ -97,6 +97,9 @@ const WEIGHT_TYPE_OPTIONS = [
   { value: "gross", label: "Gross" },
 ]
 
+/** Sentinel for optional sub category Select (Radix Select needs a non-empty value). */
+const SUB_CATEGORY_NONE = "__sub_category_none__"
+
 /** Pencil gr162 / IQLDS — read-only field row on sales order view page */
 function SalesOrderViewField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -231,21 +234,17 @@ export function SalesOrdersPage() {
   const products = selectedCategory?.subcategories ?? []
   const selectedCustomer = customerId ? data.getCustomer(customerId) : undefined
 
-  // When category changes: clear or auto-pick first product from Category Master (create only).
+  // When category changes: clear sub category if it no longer exists under the category.
   React.useEffect(() => {
     if (!categoryId) {
       setProductId("")
       return
     }
     const subs = data.getCategory(categoryId)?.subcategories ?? []
-    if (!subs.some((s) => s.id === productId)) {
-      if (mode === "create" && subs.length > 0) {
-        setProductId(subs[0].id)
-      } else {
-        setProductId("")
-      }
+    if (productId && !subs.some((s) => s.id === productId)) {
+      setProductId("")
     }
-  }, [categoryId, data, productId, mode])
+  }, [categoryId, data, productId])
 
   // Create flow: customer + category → Rate Master drives order basis & measurement type.
   React.useEffect(() => {
@@ -399,8 +398,8 @@ export function SalesOrdersPage() {
       tax_amount: totalAmount * 0.18,
       category_id: categoryId,
       category_name: cat?.category_name,
-      product_id: productId,
-      product_name: productName,
+      product_id: productId || undefined,
+      product_name: productName || undefined,
       quantity: String(qty),
       unit,
       measurement_type: measurementForPayload,
@@ -427,10 +426,12 @@ export function SalesOrdersPage() {
 
   const validate = (): string | null => {
     if (!customerId) return "Select a customer."
-    if (!selectedCustomer?.phone?.trim()) return "Selected customer must have a phone number."
+    if (!selectedCustomer?.billing_address?.trim())
+      return "Selected customer must have a billing address. Update the customer in Customer Master."
+    if (!selectedCustomer?.phone?.trim())
+      return "Selected customer must have a phone number. Update the customer in Customer Master."
     if (!orderDate) return "Order date is required."
     if (!categoryId) return "Select a category."
-    if (!productId) return "Select a sub category."
     if (!quantity || qtyNum <= 0) return "Quantity must be greater than 0."
     const net = parseFloat(netWeight)
     const gross = parseFloat(grossWeight)
@@ -621,12 +622,15 @@ export function SalesOrdersPage() {
                   </Select>
                 </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Customer Address</Label>
+                  <Label>
+                    Customer Address <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={selectedCustomer?.billing_address ?? ""}
                     readOnly
                     placeholder="—"
                     className="h-9 min-w-0 bg-muted/60 border-border"
+                    aria-invalid={!!customerId && !selectedCustomer?.billing_address?.trim()}
                   />
                 </div>
                 <div className="space-y-2 min-w-0">
@@ -639,12 +643,15 @@ export function SalesOrdersPage() {
                   />
                 </div>
                 <div className="space-y-2 min-w-0">
-                  <Label>Customer Phone</Label>
+                  <Label>
+                    Customer Phone <span className="text-destructive">*</span>
+                  </Label>
                   <Input
                     value={selectedCustomer?.phone ?? ""}
                     readOnly
                     placeholder="—"
                     className="h-9 bg-muted/60 border-border"
+                    aria-invalid={!!customerId && !selectedCustomer?.phone?.trim()}
                   />
                 </div>
               </div>
@@ -658,10 +665,9 @@ export function SalesOrdersPage() {
                   <p className="text-xs text-muted-foreground mt-1">
                     Measurement type and order basis fill from the matching{" "}
                     <span className="text-foreground font-medium">Rate Master</span> row for the
-                    selected customer and category (same logic as value of goods). Sub category defaults to
-                    the first item in{" "}
-                    <span className="text-foreground font-medium">Category Master</span> when
-                    available.
+                    selected customer and category (same logic as value of goods). Sub category is
+                    optional; when set, it comes from{" "}
+                    <span className="text-foreground font-medium">Category Master</span>.
                   </p>
                 )}
               </div>
@@ -737,16 +743,19 @@ export function SalesOrdersPage() {
                 </div>
 
                 <div className="space-y-2 min-w-0">
-                  <Label>
-                    Sub category <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={productId} onValueChange={setProductId} disabled={!categoryId}>
+                  <Label>Sub category</Label>
+                  <Select
+                    value={productId || SUB_CATEGORY_NONE}
+                    onValueChange={(v) => setProductId(v === SUB_CATEGORY_NONE ? "" : v)}
+                    disabled={!categoryId}
+                  >
                     <SelectTrigger
                       className={`h-9 bg-muted/60 border-border ${!categoryId ? "opacity-50" : ""}`}
                     >
-                      <SelectValue placeholder={categoryId ? "Select sub category" : "Select category first"} />
+                      <SelectValue placeholder={categoryId ? "Optional" : "Select category first"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={SUB_CATEGORY_NONE}>None</SelectItem>
                       {products.map((p) => (
                         <SelectItem key={p.id} value={p.id}>
                           {p.name}
