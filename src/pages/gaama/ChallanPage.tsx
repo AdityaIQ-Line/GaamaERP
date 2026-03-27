@@ -906,7 +906,7 @@ export function ChallanPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Challan Number
+                <span className="text-black">*</span> Challan Number
               </Label>
               <Input readOnly value={data.getNextChallanNumber()} className={readOnlyMuted} />
             </div>
@@ -923,7 +923,7 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Customer Order Date
+                <span className="text-black">*</span> Customer Order Date
               </Label>
               <Input
                 readOnly
@@ -933,7 +933,7 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Terms of Delivery
+                <span className="text-black">*</span> Terms of Delivery
               </Label>
               <Input
                 value={createTermsOfDelivery}
@@ -944,7 +944,7 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Dispatch Through
+                <span className="text-black">*</span> Dispatch Through
               </Label>
               <Select value={createDispatchedThrough} onValueChange={setCreateDispatchedThrough}>
                 <SelectTrigger className="h-9 rounded-md shadow-none">
@@ -984,7 +984,7 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> HSN/SAC Code
+                <span className="text-black">*</span> HSN/SAC Code
               </Label>
               <Input
                 value={createHsnSacCode}
@@ -994,7 +994,7 @@ export function ChallanPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Shipping Address
+                <span className="text-black">*</span> Shipping Address
               </Label>
               <div className="flex items-center justify-end pb-1">
                 <Button type="button" variant="outline" size="sm" onClick={handleAddShippingAddress}>

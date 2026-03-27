@@ -583,7 +583,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2">
                   <Label>
-                    Date <span className="text-destructive">*</span>
+                    Date <span className="text-black">*</span>
                   </Label>
                   <Input
                     type="date"
@@ -601,7 +601,7 @@ export function SalesOrdersPage() {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Customer Name <span className="text-destructive">*</span>
+                    Customer Name <span className="text-black">*</span>
                   </Label>
                   <Select value={customerId} onValueChange={setCustomerId}>
                     <SelectTrigger className="h-9 min-w-0 bg-muted/60 border-border">
@@ -618,7 +618,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Customer Address <span className="text-destructive">*</span>
+                    Customer Address <span className="text-black">*</span>
                   </Label>
                   <Input
                     value={selectedCustomer?.billing_address ?? ""}
@@ -639,7 +639,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Customer Phone <span className="text-destructive">*</span>
+                    Customer Phone <span className="text-black">*</span>
                   </Label>
                   <Input
                     value={selectedCustomer?.phone ?? ""}
@@ -669,7 +669,7 @@ export function SalesOrdersPage() {
               <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Measurement Type <span className="text-destructive">*</span>
+                    Measurement Type <span className="text-black">*</span>
                   </Label>
                   <Select
                     value={measurementType}
@@ -689,7 +689,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Quantity <span className="text-destructive">*</span>
+                    Quantity <span className="text-black">*</span>
                   </Label>
                   <Input
                     type="number"
@@ -715,7 +715,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Product Category <span className="text-destructive">*</span>
+                    Product Category <span className="text-black">*</span>
                   </Label>
                   <Select value={categoryId} onValueChange={setCategoryId}>
                     <SelectTrigger className="h-9 bg-muted/60 border-border">
@@ -757,7 +757,7 @@ export function SalesOrdersPage() {
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Gross Weight (kg) <span className="text-destructive">*</span>
+                    Gross Weight (kg) <span className="text-black">*</span>
                   </Label>
                   <Input
                     type="number"
@@ -772,7 +772,7 @@ export function SalesOrdersPage() {
 
                 <div className="space-y-2 min-w-0">
                   <Label>
-                    Net Weight (kg) <span className="text-destructive">*</span>
+                    Net Weight (kg) <span className="text-black">*</span>
                   </Label>
                   <Input
                     type="number"
@@ -803,7 +803,7 @@ export function SalesOrdersPage() {
 
                 <div className="space-y-2 min-w-0 sm:col-span-2 lg:col-span-2">
                   <Label>
-                    Order Basis <span className="text-destructive">*</span>
+                    Order Basis <span className="text-black">*</span>
                   </Label>
                   <Select
                     value={orderBasis}
@@ -1493,7 +1493,7 @@ export function SalesOrdersPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div className="space-y-2">
                     <Label className="text-xs font-medium">
-                      Measurement Type <span className="text-destructive">*</span>
+                      Measurement Type <span className="text-black">*</span>
                     </Label>
                     <Select
                       value={measurementType}
@@ -1516,7 +1516,7 @@ export function SalesOrdersPage() {
                       {orderBasis === "weight"
                         ? "Quantity (kg)"
                         : `Number of ${measurementType === "bag" ? "Bags" : "Cartons"}`}{" "}
-                      <span className="text-destructive">*</span>
+                      <span className="text-black">*</span>
                     </Label>
                     <Input
                       type="number"
@@ -1529,7 +1529,7 @@ export function SalesOrdersPage() {
                   <div className="col-span-full grid grid-cols-2 gap-4">
                     <div className="space-y-2 min-w-0">
                       <Label className="text-xs font-medium">
-                        Gross Weight (kg) <span className="text-destructive">*</span>
+                        Gross Weight (kg) <span className="text-black">*</span>
                       </Label>
                       <Input
                         type="number"
@@ -1542,7 +1542,7 @@ export function SalesOrdersPage() {
                     </div>
                     <div className="space-y-2 min-w-0">
                       <Label className="text-xs font-medium">
-                        Net Weight (kg) <span className="text-destructive">*</span>
+                        Net Weight (kg) <span className="text-black">*</span>
                       </Label>
                       <Input
                         type="number"

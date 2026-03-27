@@ -624,7 +624,7 @@ export function InvoicesPage() {
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Invoice Number
+                <span className="text-black">*</span> Invoice Number
               </Label>
               <Input readOnly value={nextInvoiceNumberPreview(invoices)} className={readOnlyCreate} />
               <p className="text-xs text-muted-foreground">Auto-generated on save.</p>
@@ -640,13 +640,13 @@ export function InvoicesPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Customer Order Date
+                <span className="text-black">*</span> Customer Order Date
               </Label>
               <Input readOnly value={createSo?.order_date?.slice(0, 10) ?? ""} className={readOnlyCreate} />
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Terms of Delivery
+                <span className="text-black">*</span> Terms of Delivery
               </Label>
               <Input
                 value={createTermsOfDelivery}
@@ -657,7 +657,7 @@ export function InvoicesPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> Dispatch Through
+                <span className="text-black">*</span> Dispatch Through
               </Label>
               <Select value={createDispatchedThrough} onValueChange={setCreateDispatchedThrough}>
                 <SelectTrigger className="h-9 rounded-md shadow-none">
@@ -697,7 +697,7 @@ export function InvoicesPage() {
             </div>
             <div className="space-y-2">
               <Label>
-                <span className="text-destructive">*</span> HSN/SAC Code
+                <span className="text-black">*</span> HSN/SAC Code
               </Label>
               <Input
                 value={createHsnSacCode}
@@ -708,7 +708,7 @@ export function InvoicesPage() {
             <div className="space-y-2 md:col-span-2">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <Label>
-                  <span className="text-destructive">*</span> Shipping Address
+                  <span className="text-black">*</span> Shipping Address
                 </Label>
                 <Button type="button" variant="outline" size="sm" onClick={handleAddShippingAddress}>
                   Add New

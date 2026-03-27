@@ -832,7 +832,7 @@ export function GRNPage() {
             <div className="grid h-fit grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> GRN Number
+                  <span className="text-black">*</span> GRN Number
                 </Label>
                 <Input
                   readOnly
@@ -855,7 +855,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Customer Challan Number
+                  <span className="text-black">*</span> Customer Challan Number
                 </Label>
                 <Input
                   readOnly={!canEditQtyWeights}
@@ -866,13 +866,13 @@ export function GRNPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Radiation Dose (Auto-filled)
+                  <span className="text-black">*</span> Radiation Dose (Auto-filled)
                 </Label>
                 <Input readOnly value={radiationDose} className={cn(inputPencilMuted, "text-muted-foreground")} />
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Radiation Unit
+                  <span className="text-black">*</span> Radiation Unit
                 </Label>
                 <Input readOnly value={radiationUnit} className={cn(inputPencilMuted, "text-muted-foreground")} />
               </div>
@@ -882,7 +882,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Received Quantity
+                  <span className="text-black">*</span> Received Quantity
                 </Label>
                 <Input
                   type="number"
@@ -898,7 +898,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Received By
+                  <span className="text-black">*</span> Received By
                 </Label>
                 <Input
                   readOnly={!canEditQtyWeights}
@@ -909,7 +909,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Net Weight (kg)
+                  <span className="text-black">*</span> Net Weight (kg)
                 </Label>
                 <Input
                   type="number"
@@ -923,7 +923,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1 min-w-0">
                 <Label className="text-xs font-medium">
-                  <span className="text-destructive">*</span> Gross Weight (kg)
+                  <span className="text-black">*</span> Gross Weight (kg)
                 </Label>
                 <Input
                   type="number"
@@ -1018,7 +1018,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-sm font-medium">
-                  <span className="text-destructive">*</span> Amount (₹)
+                  <span className="text-black">*</span> Amount (₹)
                 </Label>
                 {pricingEditable ? (
                   <Input
@@ -1039,7 +1039,7 @@ export function GRNPage() {
               </div>
               <div className="space-y-1">
                 <Label className="text-sm font-medium">
-                  <span className="text-destructive">*</span> GST Rate (%)
+                  <span className="text-black">*</span> GST Rate (%)
                 </Label>
                 {pricingEditable ? (
                   <Select value={gstPercentage} onValueChange={setGstPercentage}>

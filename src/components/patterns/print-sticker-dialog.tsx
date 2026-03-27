@@ -290,7 +290,7 @@ export function PrintStickerDialog({
 
           <div className="space-y-2">
             <Label className="text-xs font-medium text-foreground">
-              Date of Processing <span className="text-destructive">*</span>
+              Date of Processing <span className="text-black">*</span>
             </Label>
             <Input
               value={processingDate}

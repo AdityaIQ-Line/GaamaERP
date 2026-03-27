@@ -227,7 +227,7 @@ export function RatesPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <div className="space-y-2">
           <Label>
-            Category <span className="text-destructive">*</span>
+            Category <span className="text-black">*</span>
           </Label>
           <Select
             value={formCategoryId}
@@ -247,7 +247,7 @@ export function RatesPage() {
         </div>
         <div className="space-y-2">
           <Label>
-            Pricing Type <span className="text-destructive">*</span>
+            Pricing Type <span className="text-black">*</span>
           </Label>
           <Select
             value={formPricingType}
@@ -267,7 +267,7 @@ export function RatesPage() {
         </div>
         <div className="space-y-2">
           <Label>
-            Status <span className="text-destructive">*</span>
+            Status <span className="text-black">*</span>
           </Label>
           <Select value={formStatus} onValueChange={setFormStatus}>
             <SelectTrigger className="h-9 bg-muted/60 border-border">
@@ -284,7 +284,7 @@ export function RatesPage() {
         </div>
         <div className="space-y-2">
           <Label>
-            Rate Per Unit (₹) <span className="text-destructive">*</span>
+            Rate Per Unit (₹) <span className="text-black">*</span>
           </Label>
           <Input
             type="number"
@@ -324,7 +324,7 @@ export function RatesPage() {
           {customerSpecific ? (
             <div className="min-w-0 flex-1 space-y-2 sm:pt-0.5">
               <Label htmlFor="rate-specific-customer" className="text-sm">
-                Customer <span className="text-destructive">*</span>
+                Customer <span className="text-black">*</span>
               </Label>
               <Select value={formCustomerId || undefined} onValueChange={setFormCustomerId}>
                 <SelectTrigger
@@ -359,7 +359,7 @@ export function RatesPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label htmlFor="rate-effective-from">
-              Effective Date <span className="text-destructive">*</span>
+              Effective Date <span className="text-black">*</span>
             </Label>
             <Input
               id="rate-effective-from"
