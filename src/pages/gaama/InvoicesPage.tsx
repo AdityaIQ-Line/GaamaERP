@@ -509,6 +509,28 @@ export function InvoicesPage() {
           </div>
         </div>
 
+        <div className="rounded-lg border border-border bg-card p-5 shadow-sm md:p-6">
+          <h2 className="text-lg font-semibold text-foreground">Auto-fetched from Sales Order</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Product Category</Label>
+              <Input readOnly value={createSo?.category_name ?? "—"} className={readOnlyCreate} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Product Sub category</Label>
+              <Input readOnly value={createSo?.product_name ?? "—"} className={readOnlyCreate} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Quantity</Label>
+              <Input readOnly value={createSo?.quantity ?? "—"} className={readOnlyCreate} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Units</Label>
+              <Input readOnly value={createSo?.unit ?? "—"} className={readOnlyCreate} />
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-lg border border-border bg-card p-5 shadow-sm md:p-6 space-y-4">
           <h2 className="text-lg font-semibold text-foreground">GRN lines</h2>
           <p className="text-xs text-muted-foreground">
@@ -529,7 +551,7 @@ export function InvoicesPage() {
                     * Final Dispatch Quantity
                   </TableHead>
                   <TableHead className="whitespace-nowrap text-xs font-medium">Remaining Dispatch Quantity</TableHead>
-                  <TableHead className="whitespace-nowrap text-xs font-medium">Edit icon</TableHead>
+                  <TableHead className="whitespace-nowrap text-xs font-medium">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -577,7 +599,7 @@ export function InvoicesPage() {
                       <TableCell className="whitespace-nowrap text-emerald-600 dark:text-emerald-400">
                         {remaining.toFixed(2)} {g.unit ?? ""}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="pr-6">
                         <div className="flex items-center gap-2">
                           <Checkbox
                             checked={!!createPartialDispatch[id]}
@@ -586,16 +608,7 @@ export function InvoicesPage() {
                             }
                             aria-label={`Partial dispatch for ${g.grn_number ?? id}`}
                           />
-                          <span className="text-xs text-muted-foreground">Partial Dispatch</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 px-2"
-                            onClick={() => document.getElementById(`inv-final-qty-${id}`)?.focus()}
-                          >
-                            Edit
-                          </Button>
+                          <span className="text-xs text-foreground">Partial Dispatch</span>
                         </div>
                       </TableCell>
                     </TableRow>
