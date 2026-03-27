@@ -46,6 +46,7 @@ import {
   Calendar,
   CircleCheck,
   User,
+  X,
 } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
@@ -164,6 +165,9 @@ function addDaysToIsoDate(isoDateYmd: string, days: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** List filter: only these statuses (Pencil LCOkp). */
+const SALES_ORDER_LIST_STATUS_FILTERS = ["Draft", "Approved", "Completed"] as const
+
 const orderStatusColors: Record<string, "default" | "secondary" | "outline"> = {
   Draft: "secondary",
   Approved: "outline",
@@ -202,7 +206,8 @@ export function SalesOrdersPage() {
   const [searchTerm, setSearchTerm] = React.useState("")
   /** Pencil 9gQna, LCOkp, ngBRc — list filters */
   const [filterCustomerId, setFilterCustomerId] = React.useState("all")
-  const [filterStatus, setFilterStatus] = React.useState("all")
+  /** Empty = no status filter. Dropdown lists only Draft / Approved / Completed. */
+  const [filterStatus, setFilterStatus] = React.useState("")
   const [filterOrderDate, setFilterOrderDate] = React.useState("")
 
   // Form state (single-product)
@@ -500,20 +505,14 @@ export function SalesOrdersPage() {
     toast.success("Order approved.")
   }
 
-  const orderStatusOptions = React.useMemo(() => {
-    const s = new Set<string>()
-    for (const o of orders) {
-      const raw = orderStatusToComparableString(o.order_status)
-      if (raw.length > 0) s.add(raw)
-    }
-    return [...s].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }))
-  }, [orders])
-
   React.useEffect(() => {
-    if (filterStatus !== "all" && !orderStatusOptions.includes(filterStatus)) {
-      setFilterStatus("all")
+    if (
+      filterStatus !== "" &&
+      !SALES_ORDER_LIST_STATUS_FILTERS.some((s) => s.toLowerCase() === filterStatus.toLowerCase())
+    ) {
+      setFilterStatus("")
     }
-  }, [filterStatus, orderStatusOptions])
+  }, [filterStatus])
 
   React.useEffect(() => {
     if (
@@ -528,8 +527,10 @@ export function SalesOrdersPage() {
     const term = searchTerm.toLowerCase().trim()
     const filtered = orders.filter((o) => {
       if (filterCustomerId !== "all" && o.customer_id !== filterCustomerId) return false
-      if (filterStatus !== "all" && orderStatusToComparableString(o.order_status) !== filterStatus)
-        return false
+      if (filterStatus !== "") {
+        const row = orderStatusToComparableString(o.order_status).toLowerCase()
+        if (row !== filterStatus.toLowerCase()) return false
+      }
       if (filterOrderDate) {
         const d = o.order_date?.slice(0, 10) ?? ""
         if (d !== filterOrderDate) return false
@@ -559,12 +560,6 @@ export function SalesOrdersPage() {
 
   const grnsForOrder = (salesOrderId: string) =>
     data.grns.filter((g) => g.sales_order_id === salesOrderId)
-
-  const previewRateVal = categoryId
-    ? pickRateForSalesOrder((id) => data.getRatesByCategory(id), categoryId, customerId)
-        ?.rate_value ?? 0
-    : 0
-  const computedValueOfGoods = (qtyNum || 0) * previewRateVal
 
   const orderBasisHelp =
     orderBasis === "vehicle"
@@ -717,11 +712,6 @@ export function SalesOrdersPage() {
                     placeholder="Enter value of goods"
                     className="h-9 bg-muted/60 border-border placeholder:text-muted-foreground"
                   />
-                  {valueOfGoods.trim() === "" && categoryId && (
-                    <p className="text-xs text-muted-foreground">
-                      From Rate Master: ₹{computedValueOfGoods.toLocaleString("en-IN")} (qty × rate)
-                    </p>
-                  )}
                 </div>
                 <div className="space-y-2 min-w-0">
                   <Label>
@@ -1663,19 +1653,35 @@ export function SalesOrdersPage() {
               {/* Pencil LCOkp — Filter by Status */}
               <div className="space-y-1 min-w-[200px] w-full sm:w-[200px]">
                 <Label className="text-xs font-medium text-muted-foreground">Filter by Status</Label>
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="h-9 w-full bg-muted/60 border-border">
-                    <SelectValue placeholder="All Status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    {orderStatusOptions.map((st) => (
-                      <SelectItem key={st} value={st}>
-                        {st}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-1">
+                  <Select
+                    value={filterStatus || undefined}
+                    onValueChange={setFilterStatus}
+                  >
+                    <SelectTrigger className="h-9 min-w-0 flex-1 bg-muted/60 border-border">
+                      <SelectValue placeholder="All statuses" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SALES_ORDER_LIST_STATUS_FILTERS.map((st) => (
+                        <SelectItem key={st} value={st}>
+                          {st}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {filterStatus ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9 shrink-0 border-border bg-muted/60"
+                      onClick={() => setFilterStatus("")}
+                      aria-label="Clear status filter"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  ) : null}
+                </div>
               </div>
               {/* Pencil ngBRc — Filter by Date */}
               <div className="space-y-1 min-w-[200px] w-full sm:w-[220px]">
